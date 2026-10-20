@@ -52,3 +52,9 @@ rsconnect/
 # Dataset (no se versiona por tamanio; se obtiene desde Kaggle)
 dataset/
 *.csv
+
+# El README siempre se versiona (excepcion explicita)
+!README.md
+
+# HTML generado a partir de los .Rmd (artefacto, no se versiona)
+*.html

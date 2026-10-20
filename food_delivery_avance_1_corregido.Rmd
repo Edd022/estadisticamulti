@@ -1,0 +1,190 @@
+---
+title: "Food Delivery Orders Dataset - Avance 1 (Corregido)"
+date: "2026-10-19"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
+---
+
+## Integrantes
+20212020136	- Edward Julián García Gaitán	
+20212020116	- Daniel Alejandro Presiga Presiga
+20222020004	- Nicolás Andrés Yepes Cortés
+
+## Docente
+MsC Jhon A. Varon Robayo
+
+# 0. Proposito de esta version corregida
+
+Este documento retoma el primer avance y aplica las correcciones de preparacion que
+quedaron pendientes. El avance 1 original se conserva intacto como registro historico
+en `food_delivery_avance_1.Rmd`.
+
+Las correcciones que se incorporan son:
+
+1. Construir un dataframe de trabajo real (`Comida_preparado`) con los tipos correctos:
+   categoricas como `factor`, binarias como `factor` y variables temporales a fecha.
+2. Separar de forma explicita los pedidos completados de los cancelados, dejando claro
+   que el analisis multivariante posterior usara solo los pedidos completados.
+3. Tratar los valores atipicos con una decision tomada variable por variable.
+4. Mantener el analisis univariado y bivariado, pero corriendo sobre el dataframe
+   preparado y con los tipos correctos.
+
+No se aplica estandarizacion (`scale()`) en este documento: esa fase corresponde al
+avance 2.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 8, fig.height = 5, fig.align = "center")
+
+Comida_original <- read.csv("dataset/food_delivery_orders_dataset.csv", stringsAsFactors = FALSE)
+
+variables_temporales <- c("order_timestamp", "order_date")
+variables_binarias <- c("is_weekend", "late_delivery")
+variables_numericas <- c(
+  "order_hour", "customer_age", "restaurant_rating", "items_count", "subtotal",
+  "discount_percent", "tax_amount", "service_fee", "delivery_fee", "order_total",
+  "tip_amount", "distance_km", "delivery_partner_experience_months",
+  "delivery_partner_rating", "restaurant_preparation_time_minutes",
+  "estimated_delivery_time_minutes", "actual_delivery_time_minutes", "customer_rating"
+)
+variables_categoricas <- c(
+  "day_of_week", "city", "delivery_area", "customer_type", "restaurant_type",
+  "restaurant_primary_category", "payment_method", "weather", "traffic_level",
+  "order_status", "cancellation_reason"
+)
+variables_identificador <- c("order_id", "customer_id", "restaurant_id", "driver_id")
+```
+
+La base contiene `r nrow(Comida_original)` registros y `r ncol(Comida_original)` variables.
+
+# 1. Preparacion del dataframe de trabajo
+
+En el avance 1 original el objeto `Comida_preparado` se creaba como una copia exacta de
+`Comida_original` y no se usaba. Aqui lo construimos de verdad, aplicando las
+conversiones de tipo propuestas en el diccionario de variables.
+
+## 1.1 Conversion de tipos
+
+Partimos de una copia del original y aplicamos las conversiones:
+
+- Las variables categoricas nominales pasan a `factor`.
+- Las variables binarias (`is_weekend`, `late_delivery`) pasan a `factor` con etiquetas
+  claras, porque aunque R las lee como enteros son categoricas.
+- El nivel de trafico se trata como factor ordenado (Low < Medium < High).
+- Las variables temporales se convierten a fecha y fecha-hora.
+- Los identificadores y las numericas se conservan como estan.
+
+```{r preparacion-tipos}
+Comida_preparado <- Comida_original
+
+# Categoricas nominales a factor
+for (v in variables_categoricas) {
+  Comida_preparado[[v]] <- as.factor(Comida_preparado[[v]])
+}
+
+# Trafico como factor ordenado
+Comida_preparado$traffic_level <- factor(
+  Comida_original$traffic_level,
+  levels = c("Low", "Medium", "High"),
+  ordered = TRUE
+)
+
+# Binarias a factor con etiquetas
+Comida_preparado$is_weekend <- factor(
+  Comida_original$is_weekend,
+  levels = c(0, 1),
+  labels = c("Entre semana", "Fin de semana")
+)
+Comida_preparado$late_delivery <- factor(
+  Comida_original$late_delivery,
+  levels = c(0, 1),
+  labels = c("No tardia", "Tardia")
+)
+
+# Variables temporales a fecha y fecha-hora
+Comida_preparado$order_date <- as.Date(Comida_original$order_date)
+Comida_preparado$order_timestamp <- as.POSIXct(
+  Comida_original$order_timestamp,
+  tz = "UTC"
+)
+
+str(Comida_preparado)
+```
+
+## 1.2 Verificacion de la conversion
+
+Confirmamos que cada variable quedo con la clase esperada.
+
+```{r verificacion-tipos}
+data.frame(
+  variable = names(Comida_preparado),
+  clase = sapply(Comida_preparado, function(x) paste(class(x), collapse = ", ")),
+  row.names = NULL,
+  stringsAsFactors = FALSE
+)
+```
+
+# 2. Separacion de pedidos completados y cancelados
+
+Los valores faltantes del dataset no estan repartidos al azar: se concentran en las
+variables de cierre de la orden (`actual_delivery_time_minutes`, `tip_amount`,
+`late_delivery`, `customer_rating`) y corresponden a los pedidos cancelados, donde la
+entrega nunca ocurrio. Por eso separamos ambos grupos de forma explicita.
+
+El analisis multivariante (estandarizacion y PCA del avance 2) usara unicamente los
+pedidos **completados**, porque los cancelados no tienen tiempo real de entrega y sus NA
+son estructurales, no informacion ausente que haya que imputar.
+
+Los pedidos cancelados se conservan aparte: son la base natural para un analisis futuro
+sobre las causas de cancelacion, util para la logica de negocio.
+
+```{r separacion-completados}
+Comida_completados <- subset(Comida_preparado, order_status == "Completed")
+Comida_cancelados  <- subset(Comida_preparado, order_status == "Cancelled")
+
+cat("Pedidos completados:", nrow(Comida_completados), "\n")
+cat("Pedidos cancelados :", nrow(Comida_cancelados), "\n")
+cat("Total              :", nrow(Comida_preparado), "\n")
+```
+
+## 2.1 Verificacion de NA tras la separacion
+
+Comprobamos que, al quedarnos con los completados, desaparecen los NA de las variables de
+cierre de la orden.
+
+```{r verificacion-na-completados}
+na_completados <- colSums(is.na(Comida_completados))
+data.frame(
+  variable = names(na_completados),
+  faltantes = as.integer(na_completados),
+  row.names = NULL,
+  stringsAsFactors = FALSE
+)
+```
+
+<!-- =====================================================================
+     A PARTIR DE AQUI QUEDAN LOS SUB-PASOS PENDIENTES (PLACEHOLDERS).
+     Se iran llenando uno a uno siguiendo la metodologia de trabajo.
+     ===================================================================== -->
+
+# 3. Tratamiento de valores atipicos (PENDIENTE)
+
+En esta seccion se decidira, variable por variable, que hacer con los valores atipicos
+detectados en el avance 1 (conservar, winsorizar o marcar). Se incluira una tabla resumen
+con la recomendacion por variable antes de aplicar cualquier cambio.
+
+# 4. Analisis univariado corregido (PENDIENTE)
+
+Se retomara el analisis univariado del avance 1, pero corriendo sobre `Comida_completados`
+y con los tipos ya convertidos (factores y fechas).
+
+# 5. Analisis bivariado corregido (PENDIENTE)
+
+Se retomaran las relaciones bivariadas del avance 1 sobre el dataframe preparado.
+
+# 6. Cierre y paso al avance 2 (PENDIENTE)
+
+Se dejara el dataframe `Comida_completados` listo como insumo para la estandarizacion
+(z-score) y el PCA del avance 2.
