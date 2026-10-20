@@ -48,3 +48,7 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Dataset (no se versiona por tamanio; se obtiene desde Kaggle)
+dataset/
+*.csv

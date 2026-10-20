@@ -1,0 +1,1405 @@
+---
+title: "Food Delivery Orders Dataset - Avance 1"
+date: "2026-09-17"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
+---
+
+## Integrantes
+20212020136	- Edward Julián García Gaitán	
+20212020116	- Daniel Alejandro Presiga Presiga
+20222020004	- Nicolás Andrés Yepes Cortés
+
+## Docente
+MsC Jhon A. Varon Robayo
+
+# 1. Introduccion y descripcion basica del dataset
+
+Este informe corresponde al primer avance del proyecto de Estadistica Multidimensional y trabaja con el conjunto de datos `food_delivery_orders_dataset.csv`.
+
+El objetivo de este avance es organizar el analisis inicial, describir las 37 variables disponibles, revisar el estado actual del dataset, identificar una variable objetivo y dejar preparado el material para continuar el estudio durante el semestre.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 8, fig.height = 5, fig.align = "center")
+
+Comida_original <- read.csv("dataset/food_delivery_orders_dataset.csv", stringsAsFactors = FALSE)
+Comida_preparado <- Comida_original
+
+variables_temporales <- c("order_timestamp", "order_date")
+variables_binarias <- c("is_weekend", "late_delivery")
+variables_numericas <- c(
+  "order_hour", "customer_age", "restaurant_rating", "items_count", "subtotal",
+  "discount_percent", "tax_amount", "service_fee", "delivery_fee", "order_total",
+  "tip_amount", "distance_km", "delivery_partner_experience_months",
+  "delivery_partner_rating", "restaurant_preparation_time_minutes",
+  "estimated_delivery_time_minutes", "actual_delivery_time_minutes", "customer_rating"
+)
+
+variables_categoricas <- c(
+  "day_of_week", "city", "delivery_area", "customer_type", "restaurant_type",
+  "restaurant_primary_category", "payment_method", "weather", "traffic_level",
+  "order_status", "cancellation_reason", variables_binarias
+)
+matriz_correlacion <- cor(Comida_original[, variables_numericas], use = "pairwise.complete.obs")
+```
+
+La base contiene `r nrow(Comida_original)` registros y `r ncol(Comida_original)` variables.
+
+# 2. Fuente de datos y enlace de Kaggle
+
+El archivo fue trabajado a partir del dataset `food_delivery_orders_dataset.csv`, que en la consigna se identifica como un dataset de Kaggle.
+
+**Enlace de Kaggle:** https://www.kaggle.com/datasets/razanihababdellatif/food-delivery-orders-and-eta-logistics-dataset
+
+# 3. Exploracion inicial del dataset
+
+Primero revisamos la estructura general de la base para confirmar su tamanio, sus nombres de variables y el tipo de informacion que contiene.
+
+```{r exploracion-inicial}
+dim(Comida_original)
+names(Comida_original)
+str(Comida_original)
+summary(Comida_original)
+head(Comida_original, 10)
+```
+
+Esta revision inicial confirma que el dataset tiene `r nrow(Comida_original)` filas y `r ncol(Comida_original)` columnas, y permite identificar de forma general que existe una mezcla de identificadores, variables temporales, variables numericas y variables categoricas.
+
+# 4. Diccionario completo de las 37 variables
+
+En esta seccion se resume cada variable con su nombre, descripcion, forma en que R la lee, tipo estadistico real, transformacion propuesta y uso dentro del analisis.
+
+```{r diccionario-variables}
+diccionario_variables <- data.frame(
+  variable = c(
+    "order_id",
+    "customer_id",
+    "restaurant_id",
+    "driver_id",
+    "order_timestamp",
+    "order_date",
+    "order_hour",
+    "day_of_week",
+    "is_weekend",
+    "city",
+    "delivery_area",
+    "customer_age",
+    "customer_type",
+    "restaurant_type",
+    "restaurant_primary_category",
+    "restaurant_rating",
+    "items_count",
+    "subtotal",
+    "discount_percent",
+    "tax_amount",
+    "service_fee",
+    "delivery_fee",
+    "order_total",
+    "payment_method",
+    "tip_amount",
+    "distance_km",
+    "weather",
+    "traffic_level",
+    "delivery_partner_experience_months",
+    "delivery_partner_rating",
+    "restaurant_preparation_time_minutes",
+    "estimated_delivery_time_minutes",
+    "actual_delivery_time_minutes",
+    "late_delivery",
+    "order_status",
+    "cancellation_reason",
+    "customer_rating"
+  ),
+  descripcion = c(
+    "Identificador unico del pedido",
+    "Identificador unico del cliente",
+    "Identificador del restaurante",
+    "Identificador del repartidor",
+    "Fecha y hora exactas del pedido",
+    "Fecha del pedido",
+    "Hora del pedido dentro del dia",
+    "Dia de la semana del pedido",
+    "Indicador de fin de semana",
+    "Ciudad donde se realiza el pedido",
+    "Zona o area de entrega",
+    "Edad del cliente",
+    "Tipo de cliente",
+    "Tipo de restaurante",
+    "Categoria principal del restaurante",
+    "Calificacion del restaurante",
+    "Numero de articulos por pedido",
+    "Subtotal antes de cargos adicionales",
+    "Porcentaje de descuento aplicado",
+    "Monto de impuestos",
+    "Tarifa de servicio",
+    "Costo de envio",
+    "Total final del pedido",
+    "Metodo de pago",
+    "Monto de propina",
+    "Distancia recorrida para la entrega",
+    "Condicion climatica al momento del pedido",
+    "Nivel de trafico",
+    "Meses de experiencia del repartidor",
+    "Calificacion del repartidor",
+    "Tiempo de preparacion en restaurante",
+    "Tiempo estimado de entrega",
+    "Tiempo real de entrega",
+    "Indicador de entrega tardia",
+    "Estado de la orden",
+    "Motivo de cancelacion cuando existe",
+    "Calificacion dada por el cliente"
+  ),
+  clase_r = c(
+    "character",
+    "character",
+    "character",
+    "character",
+    "character",
+    "character",
+    "integer",
+    "character",
+    "integer",
+    "character",
+    "character",
+    "integer",
+    "character",
+    "character",
+    "character",
+    "numeric",
+    "integer",
+    "numeric",
+    "integer",
+    "numeric",
+    "numeric",
+    "numeric",
+    "numeric",
+    "character",
+    "numeric",
+    "numeric",
+    "character",
+    "character",
+    "integer",
+    "numeric",
+    "integer",
+    "integer",
+    "numeric",
+    "integer",
+    "character",
+    "character",
+    "numeric"
+  ),
+  tipo_real = c(
+    "Identificador",
+    "Identificador",
+    "Identificador",
+    "Identificador",
+    "Fecha y hora",
+    "Fecha",
+    "Numerica discreta",
+    "Categorica nominal",
+    "Binaria",
+    "Categorica nominal",
+    "Categorica nominal",
+    "Numerica discreta",
+    "Categorica nominal",
+    "Categorica nominal",
+    "Categorica nominal",
+    "Numerica continua",
+    "Numerica discreta",
+    "Numerica continua",
+    "Numerica continua",
+    "Numerica continua",
+    "Numerica continua",
+    "Numerica continua",
+    "Numerica continua",
+    "Categorica nominal",
+    "Numerica continua",
+    "Numerica continua",
+    "Categorica nominal",
+    "Categorica ordinal",
+    "Numerica discreta",
+    "Numerica continua",
+    "Numerica discreta",
+    "Numerica discreta",
+    "Numerica continua",
+    "Binaria",
+    "Categorica nominal",
+    "Categorica nominal",
+    "Numerica continua"
+  ),
+  transformacion_propuesta = c(
+    "Conservar como identificador",
+    "Conservar como identificador",
+    "Conservar como identificador",
+    "Conservar como identificador",
+    "Convertir a POSIXct si luego se analiza la dimension temporal",
+    "Convertir a Date si luego se analiza la dimension temporal",
+    "Conservar como numero discreto",
+    "Conservar como factor si se quiere ordenar por dia",
+    "Tratar como factor binario",
+    "Conservar como factor nominal",
+    "Conservar como factor nominal",
+    "Conservar como numero entero",
+    "Conservar como factor nominal",
+    "Conservar como factor nominal",
+    "Conservar como factor nominal",
+    "Conservar como numero continuo",
+    "Conservar como numero discreto",
+    "Conservar como numero continuo",
+    "Conservar como numero continuo",
+    "Conservar como numero continuo",
+    "Conservar como numero continuo",
+    "Conservar como numero continuo",
+    "Conservar como numero continuo",
+    "Conservar como factor nominal",
+    "Conservar como numero continuo y revisar NA",
+    "Conservar como numero continuo",
+    "Conservar como factor nominal",
+    "Conservar como factor ordinal",
+    "Conservar como numero entero",
+    "Conservar como numero continuo",
+    "Conservar como numero entero",
+    "Conservar como numero entero",
+    "Conservar como numero continuo",
+    "Tratar como factor binario",
+    "Conservar como factor nominal",
+    "Conservar como factor nominal y revisar NA",
+    "Conservar como numero continuo"
+  ),
+  uso = c(
+    "Trazabilidad interna",
+    "Trazabilidad interna",
+    "Trazabilidad interna",
+    "Trazabilidad interna",
+    "Analisis temporal futuro",
+    "Analisis temporal futuro",
+    "Distribucion por hora",
+    "Distribucion semanal",
+    "Variable binaria de contexto",
+    "Distribucion territorial",
+    "Distribucion territorial",
+    "Perfil del cliente",
+    "Segmentacion del cliente",
+    "Segmentacion del restaurante",
+    "Clasificacion del restaurante",
+    "Calidad del restaurante",
+    "Complejidad del pedido",
+    "Valor economico del pedido",
+    "Efecto de promociones",
+    "Costo fiscal del pedido",
+    "Costo de servicio",
+    "Costo logistico",
+    "Valor total del pedido",
+    "Medio de pago",
+    "Analisis de propinas",
+    "Distancia de reparto",
+    "Condicion externa",
+    "Condicion externa ordenada",
+    "Experiencia del repartidor",
+    "Calidad del repartidor",
+    "Tiempo de preparacion",
+    "Variable explicativa principal",
+    "Variable objetivo principal",
+    "Variable secundaria relevante",
+    "Resultado operativo",
+    "Motivo de cancelacion",
+    "Indicador de satisfaccion"
+  ),
+  stringsAsFactors = FALSE
+)
+
+if (requireNamespace("knitr", quietly = TRUE)) {
+  knitr::kable(diccionario_variables, row.names = FALSE, caption = "Diccionario completo de variables")
+} else {
+  print(diccionario_variables, row.names = FALSE)
+}
+```
+
+# 5. Estado actual y preparacion del dataset
+
+## 5.1 Dataset original
+
+El dataset se conserva sin sobreescrituras para mantener la trazabilidad del analisis durante todo el semestre.
+
+```{r estado-original}
+class(Comida_original)
+```
+
+## 5.2 Seleccion de variables
+
+En el analisis inicial se distinguen las variables de identificacion, las temporales, las categoricas, las binarias y las numericas.
+
+```{r seleccion-variables}
+variables_identificador <- c("order_id", "customer_id", "restaurant_id", "driver_id")
+variables_fechas <- c("order_timestamp", "order_date")
+variables_num_actual <- variables_numericas
+
+datos_num_actual <- Comida_original[, variables_num_actual]
+datos_cat_actual <- Comida_original[, variables_categoricas]
+
+dim(datos_num_actual)
+dim(datos_cat_actual)
+```
+
+## 5.3 Revision de tipos
+
+```{r revision-tipos}
+sapply(Comida_original, class)
+```
+
+## 5.4 Variables binarias y categoricas
+
+Las variables `is_weekend` y `late_delivery` son binarias. Aunque R las lee como enteros, estadisticamente deben tratarse como categoricas binarias.
+
+La revision detallada de cada una aparece mas adelante, con su secuencia completa de NA, media, desviacion, minimo, maximo, valores unicos y tabla de frecuencias.
+
+## 5.5 Valores faltantes
+
+```{r faltantes}
+faltantes <- colSums(is.na(Comida_original))
+porcentaje_faltantes <- round(100 * faltantes / nrow(Comida_original), 3)
+
+data.frame(
+  variable = names(faltantes),
+  faltantes = as.integer(faltantes),
+  porcentaje = porcentaje_faltantes,
+  stringsAsFactors = FALSE
+)
+```
+
+Los faltantes se concentran en variables vinculadas con el cierre de la orden, en especial `tip_amount`, `actual_delivery_time_minutes`, `late_delivery` y `customer_rating`. Esa pauta nos lleva a revisar con mas detalle el bloque final de variables y a interpretar con cuidado los registros incompletos.
+
+## 5.6 Conjunto númerico actual
+
+El conjunto numerico actual conserva las 18 variables numericas que se analizaran en la etapa descriptiva y en la matriz de correlacion.
+
+```{r conjunto-numerico}
+dim(datos_num_actual)
+str(datos_num_actual)
+```
+
+
+## 5.7 Conjunto categorico actual
+
+El conjunto categorico actual tiene 13 variables a analizar.
+
+```{r conjunto-categorico}
+dim(datos_cat_actual)
+str(datos_cat_actual)
+```
+
+# 6. Variable objetivo
+
+La variable objetivo que para nosotros es la principal de este avance es `actual_delivery_time_minutes`, porque resume el tiempo real que tarda la entrega y permite relacionarla con la preparacion del pedido, la distancia, el trafico y otras variables operativas.
+
+Como variable secundaria relevante queda `late_delivery`, ya que sintetiza si la entrega se realizo tarde o no y ayuda a interpretar el comportamiento del tiempo de entrega.
+
+Ambas variables se desarrollan con detalle en las secciones 7.18 y 7.19, donde se conserva la revision paso a paso de sus valores y de su distribucion.
+
+# 7. Analisis univariado de Variables Númericas
+
+## 7.1 `order_hour`
+
+Primero revisamos la hora del pedido con dos histogramas: uno detallado con intervalos de una hora y otro mas general con intervalos de cuatro horas, porque queriamos identificar tanto la hora exacta de mayor demanda como la tendencia global del dia.
+
+Despues de revisar la media, la desviacion y el rango, recuperamos la segunda version del histograma para ver la tendencia general del dia.
+
+```{r order-hour}
+sum(is.na(Comida_original$order_hour))
+mean(Comida_original$order_hour)
+sd(Comida_original$order_hour)
+min(Comida_original$order_hour)
+max(Comida_original$order_hour)
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(2, 2), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$order_hour, breaks = seq(0, 24, by = 1), right = FALSE, col = "red", border = "black", main = "Histograma de la hora del pedido", xlab = "Hora del dia", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 24, by = 1))
+hist(Comida_original$order_hour, breaks = seq(0, 24, by = 4), right = FALSE, col = "red", border = "black", main = "Pedidos por hora del dia", xlab = "Hora del dia", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 24, by = 4))
+lines(density(Comida_original$order_hour), col = "darkred", lwd = 2)
+plot(density(Comida_original$order_hour), col = "darkred", lwd = 2, main = "Densidad de la hora del pedido", xlab = "Hora del dia", ylab = "Densidad")
+boxplot(Comida_original$order_hour, horizontal = TRUE, col = "red3", border = "black", main = "Boxplot de la hora del pedido", xlab = "Hora del dia")
+par(op)
+```
+
+Del histograma podemos concluir que el valor que más se repite (la hora pico absoluta o moda) son las 19:00 horas (7:00 PM). Además, la distribución evidencia un comportamiento bimodal, mostrando dos picos claros de alta demanda en el día: el primero durante la hora que podrias considerarse es la hora del almuerzo (entre las 12:00 y las 13:00 horas), y el segundo durante la que podrias considerarse hora de la comida entre las 19:00 y las 20:00 horas.
+
+Del grafico de densidad,podemos concluir que la curva (que para nosotros se asemeja a un M) confirma la presencia de las dos modas principales (almuerzo y comida) y demuestra que la probabilidad de que ingrese un pedido es mínima durante la madrugada (0:00 a 5:00 horas), para luego ascender a partir de las 6:00 AM.
+
+Finalmente del diagrama de cajas y bigotes Podemos concluir que la mediana es de 14:00 horas (2:00 PM). El 50% central de los pedidos se realiza entre las 11:00 y las 19:00 horas. Finalmente notamos que no se presentan valores atipicos.
+
+## 7.2 `is_weekend`
+
+Primero revisamos si habia faltantes, luego calculamos la media y la desviacion estandar, despues verificamos el minimo y el maximo, confirmamos los valores unicos y al final usamos la tabla de frecuencias para ver la distribucion entre semana y fin de semana.
+
+```{r is-weekend}
+sum(is.na(Comida_original$is_weekend))
+mean(Comida_original$is_weekend)
+sd(Comida_original$is_weekend)
+min(Comida_original$is_weekend)
+max(Comida_original$is_weekend)
+unique(Comida_original$is_weekend)
+table(Comida_original$is_weekend)
+prop.table(table(Comida_original$is_weekend)) * 100
+round(prop.table(table(Comida_original$is_weekend)) * 100, 2)
+
+tabla_is_weekend <- table(Comida_original$is_weekend)
+
+tabla_is_weekend_df <- data.frame(
+  Categoria = c("Entre semana (0)", "Fin de semana (1)"),
+  Frecuencia = as.vector(tabla_is_weekend),
+  Porcentaje = round(as.vector(prop.table(tabla_is_weekend)) * 100, 2)
+)
+
+tabla_is_weekend_df
+
+barplot(tabla_is_weekend, names.arg = c("Entre semana (0)", "Fin de semana (1)"), col = c("steelblue", "tomato"), border = "white", main = "Pedidos entre semana y fin de semana", ylab = "Frecuencia")
+```
+
+De este diagrama de barras podemos concluir que la categoría con mayor volumen es la de días entre semana (0), que como vimos mas arriba haciendo uso del respectivo comando, concentra 36,644 pedidos que equivalen al 73.29% del total de los registros. En contraste, los pedidos realizados durante el fin de semana (1) corresponden a 13,356 pedidos, representando el 26.71% restante. Esta diferencia para nosotros podra deberse a que la categoría de entre semana abarca cinco días hábiles (de lunes a viernes), mientras que el fin de semana comprende únicamente dos días (sábado y domingo) y nos permite concluir que la mayoria de los pedidos se hacen entre semana.
+
+## 7.3 `customer_age`
+
+```{r customer-age}
+sum(is.na(Comida_original$customer_age))
+mean(Comida_original$customer_age)
+sd(Comida_original$customer_age)
+min(Comida_original$customer_age)
+max(Comida_original$customer_age)
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$customer_age, breaks = seq(15, 55, by = 5), right = FALSE, col = "orange", border = "black", main = "Edad de los clientes", xlab = "Edad (años)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(15, 55, by = 5))
+lines(density(Comida_original$customer_age), col = "darkorange4", lwd = 2)
+plot(density(Comida_original$customer_age), col = "darkorange4", lwd = 2, main = "Densidad de la edad", xlab = "Edad (años)", ylab = "Densidad")
+boxplot(Comida_original$customer_age, horizontal = TRUE, col = "orange", border = "black", main = "Boxplot de la edad", xlab = "Edad (años)")
+par(op)
+```
+
+Del histograma podemos concluir que el rango de edad que más se repite es el grupo de 25 a 30 años. La distribución muestra un claro sesgo positivo hacia la derecha, evidenciando que la gran mayoría de los usuarios son personas jóvenes y que la demanda disminuye hacia los grupos de mayor edad.
+
+Del gráfico de densidad podemos concluir que la distribución es multimodal, presentando tres picos, el primero alrededor de los 18-19 años, un segundo pico alrededor de los 28 años, y un tercer pico secundario alrededor de los 40 años. Después de los 42 años, la densidad cae drásticamente hacia valores cercanos a cero.
+
+Del diagrama de cajas y bigotes podemos concluir que la mediana se ubica en los 27 años. El 50% central de los clientes tiene entre 21 años y 33 años. El límite inferior del gráfico inicia en el valor mínimo de 18 años, mientras que en el extremo superior se observan valores atípicos aislados correspondientes a edades que superan el límite del bigote superior situado en los 51 años.
+
+## 7.4 `restaurant_rating`
+
+```{r restaurant-rating}
+sum(is.na(Comida_original$restaurant_rating))
+mean(Comida_original$restaurant_rating)
+sd(Comida_original$restaurant_rating)
+min(Comida_original$restaurant_rating)
+max(Comida_original$restaurant_rating)
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$restaurant_rating, breaks = seq(2.8, 5.0, by = 0.2), right = FALSE, col = "purple", border = "black", main = "Calificacion de restaurantes", xlab = "Calificacion", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(2.8, 5.0, by = 0.2))
+lines(density(Comida_original$restaurant_rating), col = "purple4", lwd = 2)
+plot(density(Comida_original$restaurant_rating), col = "purple4", lwd = 2, main = "Densidad de la calificacion", xlab = "Calificacion", ylab = "Densidad")
+boxplot(Comida_original$restaurant_rating, horizontal = TRUE, col = "plum", border = "black", main = "Boxplot de la calificacion", xlab = "Calificacion")
+par(op)
+```
+
+Del histograma podemos concluir que el rango de calificación que más se repite es el de 3.8 a 4.0 estrellas, seguido muy de cerca por el rango de 4.2 a 4.4 estrellas. La distribución muestra una clara concentración hacia puntuaciones altas, evidenciando que la gran mayoría de los pedidos se realizan en restaurantes bien evaluados (mayores a 3.6 estrellas).
+
+Del gráfico de densidad podemos concluir que la distribución es multimodal, presentando varios picos, el pico más alto se ubica en 3.9 estrellas, con picos tambien en 4.2, 4.8 y 3.6 estrellas.
+
+Del diagrama de cajas y bigotes podemos concluir que la mediana es de 4.2 estrellas. El 50% central de las calificaciones se encuentra entre 3.9 estrellas y 4.6 estrellas. El límite del bigote superior alcanza la calificación máxima posible de 5.0 estrellas, mientras que en el extremo inferior observamos un valor atípico que se situa por debajo del límite del bigote inferior.
+
+
+## 7.5 `items_count`
+
+```{r items-count}
+sum(is.na(Comida_original$items_count))
+mean(Comida_original$items_count)
+sd(Comida_original$items_count)
+min(Comida_original$items_count)
+max(Comida_original$items_count)
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$items_count, breaks = seq(0.5, 10.5, by = 1), right = FALSE, col = "green", border = "black", main = "Cantidad de items por pedido", xlab = "Numero de items", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(1, 10, by = 1))
+lines(density(Comida_original$items_count), col = "darkgreen", lwd = 2)
+plot(density(Comida_original$items_count), col = "darkgreen", lwd = 2, main = "Densidad de items", xlab = "Numero de items", ylab = "Densidad")
+boxplot(Comida_original$items_count, horizontal = TRUE, col = "palegreen3", border = "black", main = "Boxplot de items", xlab = "Numero de items")
+par(op)
+```
+
+Del histograma podemos concluir que la cantidad de productos más frecuente es de 1 ítem. La distribución muestra un fuerte sesgo positivo (asimétrica a la derecha), evidenciando que las compras pequeñas de 1 a 3 productos abarcan la mayoría, mientras que las órdenes compuestas por más de 6 ítems representan una fracción muy reducida.
+
+Del gráfico de densidad podemos concluir que la distribución es multimodal presentando picos en cada uno de los números enteros exactos (1, 2, 3, etc.). La altura de los picos disminuye conforme aumenta el número de artículos, alcanzando su punto más elevado en 1 ítem y cayendo hasta formar picos mínimos entre los 8 y 10 ítems.
+
+Del diagrama de cajas y bigotes podemos concluir que la mediana es de 2 ítems. El 50% central de los pedidos oscila entre 1 ítem y 4 ítems. El bigote inferior se ubica en el mínimo posible de 1 ítem, mientras que el bigote superior se extiende hasta los 8 ítems. Por encima de este límite, se observan valores atípicos que en nuestro analisis son los puntos correspondientes a pedidos de 9 y 10 ítems.
+
+## 7.6 `subtotal`
+
+```{r subtotal}
+sum(is.na(Comida_original$subtotal))
+mean(Comida_original$subtotal)
+sd(Comida_original$subtotal)
+min(Comida_original$subtotal)
+max(Comida_original$subtotal)
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$subtotal, breaks = seq(0, 380, by = 20), right = FALSE, col = "blue", border = "black", main = "Subtotal de pedidos", xlab = "Subtotal ($)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 380, by = 40))
+lines(density(Comida_original$subtotal), col = "blue4", lwd = 2)
+plot(density(Comida_original$subtotal), col = "blue4", lwd = 2, main = "Densidad del subtotal", xlab = "Subtotal ($)", ylab = "Densidad")
+boxplot(Comida_original$subtotal, horizontal = TRUE, col = "lightblue", border = "black", main = "Boxplot del subtotal", xlab = "Subtotal ($)")
+par(op)
+```
+
+Del histograma vemos que la categoría con mayor volumen es el primer intervalo de 0 a 20 dólares. La distribución muestra una clara asimetría positiva (sesgada a la derecha), lo que indica que la gran mayoría de los clientes realizan compras de valor económico moderado, mientras que los montos altos resultan cada vez menos frecuentes.
+
+Del gráfico de densidad vemos una curva unimodal con un sesgo muy marcado hacia la derecha, alcanzando su punto de mayor probabilidad alrededor de los 10 a 15 dólares. A partir de este pico, la densidad cae rápidamente hasta aplanarse cerca de los 100 dólares y extender una cola larga hacia los valores superiores.
+
+Finalmente del diagrama de cajas y bigotes vemos que La mediana se ubica mas o menos en 22 dólares. El 50% central de los pedido oscila entre 13 dólares 40.12. El bigote inferior inicia en el valor mínimo de 5.10 dólares, mientras que el bigote superior se extiende hasta 80.64 dólares. Por encima de este límite, existe una alta presencia de valores atípicos que creemos se deben a pedidos grupales.
+
+## 7.7 `discount_percent`
+
+```{r discount-percent}
+sum(is.na(Comida_original$discount_percent))
+mean(Comida_original$discount_percent)
+sd(Comida_original$discount_percent)
+min(Comida_original$discount_percent)
+max(Comida_original$discount_percent)
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$discount_percent, breaks = seq(-2.5, 22.5, by = 5), right = FALSE, col = "red", border = "black", main = "Descuento aplicado", xlab = "Descuento (%)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 20, by = 5))
+lines(density(Comida_original$discount_percent), col = "red4", lwd = 2)
+plot(density(Comida_original$discount_percent), col = "red4", lwd = 2, main = "Densidad del descuento", xlab = "Descuento (%)", ylab = "Densidad")
+boxplot(Comida_original$discount_percent, horizontal = TRUE, col = "salmon", border = "black", main = "Boxplot del descuento", xlab = "Descuento (%)")
+par(op)
+```
+
+Del histograma podemos ver que la categoría con mayor volumen es el primer intervalo de 0% de descuento. La distribución muestra un claro comportamiento asimétrico positivo, lo que demuestra que en la mayoría de las transacciones no se aplica descuento alguno, ahora dentro de los descuentos (15% y 20%) resultan progresivamente menos frecuentes.
+
+Del gráfico de densidad vemos que la curva es multimodal, presentando picos agudos en los porcentajes fijos: 0%, 5%, 10%, 15% y 20%. El pico de mayor densidad se ubica en el 0%, seguido de los tramos de 5% y 10%, cayendo a cero entre cada uno de los valores enteros (No hay descuentos del 0.05% ni valores similares).
+
+En el diagrama de cajas y bigotes vemos que la mediana es 0%, ubicando el borde izquierdo de la caja y la línea central en dicho valor debido al alto volumen de pedidos sin descuento. El 50% central de los datos abarca desde 0% hasta 10%. El bigote inferior inicia en 0% y el bigote superior se extiende hasta el valor máximo registrado de 20%, finalmente no se ven valores atípicos.
+
+
+## 7.8 `tax_amount`
+
+```{r tax-amount}
+sum(is.na(Comida_original$tax_amount))
+mean(Comida_original$tax_amount)
+sd(Comida_original$tax_amount)
+min(Comida_original$tax_amount)
+max(Comida_original$tax_amount)
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$tax_amount, breaks = seq(0, 55, by = 5), right = FALSE, col = "coral", border = "black", main = "Impuestos", xlab = "Monto de impuesto ($)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 55, by = 5))
+lines(density(Comida_original$tax_amount), col = "coral4", lwd = 2)
+plot(density(Comida_original$tax_amount), col = "coral4", lwd = 2, main = "Densidad de impuestos", xlab = "Monto de impuesto ($)", ylab = "Densidad")
+boxplot(Comida_original$tax_amount, horizontal = TRUE, col = "mistyrose", border = "black", main = "Boxplot de impuestos", xlab = "Monto de impuesto ($)")
+par(op)
+```
+Del histograma podemos afirmar que la categoría con mayor volumen corresponde al primer intervalo de 0 a 5 dólares. La distribución presenta una marcada asimetría positiva (sesgada a la derecha), lo que demuestra que la gran mayoría de las transacciones pagan montos de impuestos muy bajos, mientras que los cobros superiores a los $10 dólares representan una fracción mínima de las compras.
+
+En el gráfico de densidad vemos que la curva es unimodal con un sesgo muy pronunciado hacia la derecha, alcanzando su punto de máxima densidad alrededor de los 1.5 a 2.5 dólares. A partir de esta cresta, la probabilidad desciende bruscamente hasta aplanarse cerca de los 15 dólares y extender una cola larga hacia los valores más altos.
+
+Del diagrama de cajas y bigotes podemos afirmar que la mediana se ubica en aproximandamente 2 0 3 dólares. El 50% central de los cobros de impuestos se encuentra entre 1, 1.7 dólares y 5, 5.4 dólares. El bigote inferior inicia en el valor mínimo de 0.57 dólares, mientras que el bigote superior se extiende hasta los 10.87 dólares. Por encima de este límite, se observa una gran concentración de valores atípicos que alcanzan un máximo de $50.82 dólares, los cuales están directamente vinculados a los pedidos con subtotales elevados.
+
+
+## 7.9 `service_fee`
+
+```{r service-fee}
+sum(is.na(Comida_original$service_fee))
+mean(Comida_original$service_fee)
+sd(Comida_original$service_fee)
+min(Comida_original$service_fee)
+max(Comida_original$service_fee)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$service_fee, breaks = seq(0, 26, by = 2), right = FALSE, col = "pink", border = "black", main = "Tarifa de servicio", xlab = "Tarifa de servicio ($)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 26, by = 2))
+lines(density(Comida_original$service_fee), col = "deeppink4", lwd = 2)
+plot(density(Comida_original$service_fee), col = "deeppink4", lwd = 2, main = "Densidad de la tarifa", xlab = "Tarifa de servicio ($)", ylab = "Densidad")
+boxplot(Comida_original$service_fee, horizontal = TRUE, col = "pink", border = "black", main = "Boxplot de la tarifa", xlab = "Tarifa de servicio ($)")
+par(op)
+```
+
+En el histograma vemos que la categoría con mayor volumen corresponde al primer intervalo de 0 a 2 dólares. La distribución evidencia una fuerte asimetría positiva (sesgada a la derecha), lo que demuestra que la plataforma cobra tarifas de servicio bastante bajas en la gran mayoría de las órdenes, mientras que los cobros superiores a $4 dólares son poco frecuentes.
+
+Del gráfico de densidad podemos notar que la curva es unimodal con una asimetría muy pronunciada hacia la derecha, alcanzando su punto de máxima densidad alrededor de 1 dolar. A partir de este pico, la probabilidad desciende rápidamente hasta aplanarse cerca de los 5 dólares y extender una cola larga hacia los valores máximos.
+
+Del diagrama de cajas y bigotes podemos concluir que la mediana es de aproximadamente 1 dólar. El 50% central de las tarifas de servicio se encuentra entre 0.5 dólares y 2 dólares . El bigote inferior inicia en el valor mínimo de 0.13 dólares, mientras que el bigote superior se extiende hasta 3.85 dólares. Por encima de este límite, se observa una notable cantidad de valores atípicos asociados a pedidos de alto costo total. 
+
+## 7.10 `delivery_fee`
+
+Primero revisamos la media, la desviacion estandar y el rango de la tarifa de envio. Luego observamos su distribucion para ver si la tarifa se mueve en tramos y si existe un salto entre cobro gratuito y cobro positivo.
+
+```{r delivery-fee}
+sum(is.na(Comida_original$delivery_fee))
+mean(Comida_original$delivery_fee)
+sd(Comida_original$delivery_fee)
+min(Comida_original$delivery_fee)
+max(Comida_original$delivery_fee)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$delivery_fee, breaks = seq(0, 13, by = 1), right = FALSE, col = "lightseagreen", border = "black", main = "Costo de envio", xlab = "Costo de envio ($)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 12, by = 1))
+lines(density(Comida_original$delivery_fee), col = "darkcyan", lwd = 2)
+plot(density(Comida_original$delivery_fee), col = "darkcyan", lwd = 2, main = "Densidad del costo de envio", xlab = "Costo de envio ($)", ylab = "Densidad")
+boxplot(Comida_original$delivery_fee, horizontal = TRUE, col = "paleturquoise", border = "black", main = "Boxplot del costo de envio", xlab = "Costo de envio ($)")
+par(op)
+```
+
+Del histograma, la categoría con mayor volumen es el primer intervalo de 0 a 1 dólar. Llama nuestra atención que la barra del intervalo de 1 a 2 dólares es nula (0 pedidos), seguida por un segundo grupo muy voluminoso entre los 3 y 5 dólares. Esto demuestra que la plataforma maneja una estructura de tarifas donde los envíos son o bien gratuitos(0), o pasan directamente a cobros a partir de los 2 dólares.
+
+Del gráfico de densidad afirmamos que la curva es bimodal, presentando dos picos muy definidos separados por un valle en cero entre 1 y 2 dólares. El primer pico alcanza su máxima densidad en 0 dólares (envíos sin costo), mientras que el segundo pico se ubica alrededor de los 3.5 dólares. A partir de este segundo pico, la curva desciende progresivamente y muestra un sesgo positivo hacia valores de tarifa más altos.
+
+Del diagrama de cajas y bigotes concluimos que la mediana se ubica en aproximandamente 3.5 dólares. La mtidad de los datos se encuentra entre el borde izquierdo de la caja y bigote inferior, o sea 0 dólares y 4.5 dólares, el bigote superior se extiende hasta los 11 dólares más o menos. Por encima de este valor, se observan valores atípicos que llegan hasta la tarifa máxima de 12 dólares.
+
+## 7.11 `order_total`
+
+```{r order-total}
+sum(is.na(Comida_original$order_total))
+mean(Comida_original$order_total)
+sd(Comida_original$order_total)
+min(Comida_original$order_total)
+max(Comida_original$order_total)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$order_total, breaks = seq(0, 450, by = 25), right = FALSE, col = "brown", border = "black", main = "Valor total del pedido", xlab = "Total del pedido ($)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 450, by = 50))
+lines(density(Comida_original$order_total), col = "brown4", lwd = 2)
+plot(density(Comida_original$order_total), col = "brown4", lwd = 2, main = "Densidad del valor total", xlab = "Total del pedido ($)", ylab = "Densidad")
+boxplot(Comida_original$order_total, horizontal = TRUE, col = "tan", border = "black", main = "Boxplot del valor total", xlab = "Total del pedido ($)")
+par(op)
+```
+
+En el histograma vemos que la categoría con mayor volumen corresponde al primer intervalo de 0 a 25 dólares. La distribución presenta una marcada asimetría positiva (sesgada a la derecha), lo que demuestra que la gran mayoría de las transacciones totales se mantienen por debajo de los 50 dólares, mientras que las cuentas finales elevadas representan una proporción mínima del volumen de los datos.
+
+Del gráfico de densidad, podemos afirmar que la curva es unimodal con un fuerte sesgo a la derecha, alcanzando su punto de máximo alrededor de los 15 a 20 dólares. A partir de este pico, la probabilidad desciende rápidamente hasta aplanarse cerca de los $100 dólares y extender una cola larga hacia los valores máximos que tiene el dataset.
+
+Del diagrama de cajas y bigotes afirmamos que la mediana es de aproximandamente 28, 30 dólares. La mitad de los datos se encuentra entre mas o menos los 17.43 dólares y los 50 dólares. El bigote inferior inicia en el valor mínimo registrado de 4.87 dólares, mientras que el bigote superior se extiende hasta los 95.46 dólares. Por encima de este límite, se observa una notable presencia de valores atípicos que llegan hasta un valor total máximo de 443.21 dólares.
+
+## 7.12 `tip_amount`
+
+```{r tip-amount}
+sum(is.na(Comida_original$tip_amount))
+mean(is.na(Comida_original$tip_amount)) * 100
+mean(Comida_original$tip_amount, na.rm = TRUE)
+sd(Comida_original$tip_amount, na.rm = TRUE)
+min(Comida_original$tip_amount, na.rm = TRUE)
+max(Comida_original$tip_amount, na.rm = TRUE)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$tip_amount, breaks = seq(0, 55, by = 5), right = FALSE, col = "gold", border = "black", main = "Monto de propina", xlab = "Propina ($)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 55, by = 5))
+lines(density(Comida_original$tip_amount, na.rm = TRUE), col = "gold4", lwd = 2)
+plot(density(Comida_original$tip_amount, na.rm = TRUE), col = "gold4", lwd = 2, main = "Densidad de la propina", xlab = "Propina ($)", ylab = "Densidad")
+boxplot(Comida_original$tip_amount, horizontal = TRUE, col = "khaki1", border = "black", main = "Boxplot de la propina", xlab = "Propina ($)")
+par(op)
+```
+
+Del histograma, la categoría con mayor volumen corresponde al primer intervalo de 0 a 5 dólares. La distribución muestra un sesgo positivo extremo hacia la derecha, lo que demuestra que la gran mayoría de los clientes no dejan propina o entregan montos muy reducidos, mientras que las propinas superiores a 5 dólares son poco frecuentes.
+
+Del gráfico de densidad, vemos que la curva es unimodal con un sesgo extremadamente pronunciado hacia la derecha, alcanzando su pico máximo en 0 dólares. A partir de este punto, la probabilidad cae de forma drástica hasta aplanarse cerca de los 10 dólares y extender una cola larga hacia los valores máximos.
+
+Del diagrama de cajas y bigotes podemos afirmar que la mediana es de 0 dólares, ubicando la línea central y el borde izquierdo de la caja en dicho valor. La mitad de los datos se encuentra entre 0 dólares  y aproximadamente 2 dólares. El bigote superior esta mas o menos en 5, 6 dólares. Por encima de este límite, se observa una alta presencia de valores atípicos que llegan hasta un valor máximo de 53.65 dólares, correspondientes a propinas raras vez dadas y con valores altos.
+
+## 7.13 `distance_km`
+
+```{r distance-km}
+sum(is.na(Comida_original$distance_km))
+mean(Comida_original$distance_km)
+sd(Comida_original$distance_km)
+min(Comida_original$distance_km)
+max(Comida_original$distance_km)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$distance_km, breaks = seq(0, 20, by = 2), right = FALSE, col = "yellow", border = "black", main = "Distancia del envio", xlab = "Distancia (km)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 20, by = 2))
+lines(density(Comida_original$distance_km), col = "gold4", lwd = 2)
+plot(density(Comida_original$distance_km), col = "gold4", lwd = 2, main = "Densidad de la distancia", xlab = "Distancia (km)", ylab = "Densidad")
+boxplot(Comida_original$distance_km, horizontal = TRUE, col = "lightyellow", border = "black", main = "Boxplot de la distancia", xlab = "Distancia (km)")
+par(op)
+```
+
+En el histograma vemos que la categoría con mayor volumen corresponde al intervalo de 2 a 4 km. La distribución presenta un marcado sesgo positivo hacia la derecha, lo que demuestra que la gran mayoría de las entregas se realizan en trayectos cortos o de mediana distancia, mientras que los envíos superiores a 10 km representan una proporción muy baja.
+
+Del gráfico de densidad, vemos que la curva es unimodal con un sesgo claro hacia la derecha, alcanzando su punto de máximo de probabilidad entre los 3 a 3.5 km. A partir de este pico, la densidad desciende progresivamente hasta aplanarse cerca de los 12 km y extender una cola larga hacia las distancias mas altas.
+
+En el diagrama de cajas y bigotes vemos que la mediana se ubica en aproximadamente 4 km. La mitad de los datos se encuentra entre los 2.5 km y los 6 km. El bigote inferior inicia en el valor mínimo registrado que es 0.80 km, mientras que el bigote superior se extiende hasta los 10.50 km. Por encima de este límite, se observa una notable concentración de valores atípicos que llegan hasta una distancia máxima de 20km.
+
+## 7.14 `delivery_partner_experience_months`
+
+```{r delivery-partner-experience}
+sum(is.na(Comida_original$delivery_partner_experience_months))
+mean(Comida_original$delivery_partner_experience_months)
+sd(Comida_original$delivery_partner_experience_months)
+min(Comida_original$delivery_partner_experience_months)
+max(Comida_original$delivery_partner_experience_months)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$delivery_partner_experience_months, breaks = seq(0, 60, by = 5), right = FALSE, col = "black", border = "white", main = "Experiencia del repartidor", xlab = "Experiencia (meses)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 60, by = 5))
+lines(density(Comida_original$delivery_partner_experience_months), col = "gray20", lwd = 2)
+plot(density(Comida_original$delivery_partner_experience_months), col = "gray20", lwd = 2, main = "Densidad de la experiencia", xlab = "Experiencia (meses)", ylab = "Densidad")
+boxplot(Comida_original$delivery_partner_experience_months, horizontal = TRUE, col = "gray70", border = "black", main = "Boxplot de experiencia", xlab = "Experiencia (meses)")
+par(op)
+```
+
+Del histograma, vemos que la categoría con mayor volumen de pedidos corresponde al intervalo de 20 a 25 meses de experiencia, seguida muy de cerca por el rango de 5 a 10 meses. La distribución abarca de forma uniforme todo el espectro operacional entre 1 y 60 meses, evidenciando que las entregas son realizadas tanto por repartidores novatos como por repartidores con mas experiencia.
+
+En el gráfico de densidad, vemos que la curva presenta un comportamiento multimodal, con picos marcados de mayor probabilidad alrededor de los 7 meses, 22 meses y 46 meses. La densidad se mantiene relativamente alta y estable a lo largo de casi todo el rango (entre 1 y 60 meses) y desciende abruptamente hacia cero en ambos extremos del gráfico.
+
+Del diagrama de cajas y bigotes podemos afirmar que la mediana se ubica en 29 meses. La mitad de los datos se encuentra repartida homogéneamente entre 14 meses y 45 meses. El bigote inferior inicia en el valor mínimo de 1 mes, mientras que el bigote superior se extiende hasta el valor máximo de 60 meses, no vemos valores atípicos y creemos es debido a la simetría general de la variable.
+
+
+## 7.15 `delivery_partner_rating`
+
+```{r delivery-partner-rating}
+sum(is.na(Comida_original$delivery_partner_rating))
+mean(Comida_original$delivery_partner_rating)
+sd(Comida_original$delivery_partner_rating)
+min(Comida_original$delivery_partner_rating)
+max(Comida_original$delivery_partner_rating)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$delivery_partner_rating, breaks = seq(3.0, 5.0, by = 0.2), right = FALSE, col = "purple", border = "black", main = "Calificacion del repartidor", xlab = "Calificacion", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(3.0, 5.0, by = 0.2))
+lines(density(Comida_original$delivery_partner_rating), col = "purple4", lwd = 2)
+plot(density(Comida_original$delivery_partner_rating), col = "purple4", lwd = 2, main = "Densidad de la calificacion", xlab = "Calificacion", ylab = "Densidad")
+boxplot(Comida_original$delivery_partner_rating, horizontal = TRUE, col = "plum", border = "black", main = "Boxplot de la calificacion", xlab = "Calificacion")
+par(op)
+```
+
+En el histograma vemos que la categoría con mayor volumen corresponde al último intervalo de 4.8 a 5 estrellas. La distribución muestra un claro sesgo negativo hacia la izquierda, lo que demuestra que la gran mayoría de los repartidores reciben puntuaciones sobresalientes (superiores a 4.2 estrellas), mientras que las evaluaciones por debajo de 3.8 son poco comunes.
+
+Del gráfico de densidad notamos que la curva es multimodal con varios picos, alcanzando sus puntos máximo en alrededor de las 4.3, 4.5, 4.7 y 5 estrellas. A partir de las 4.2 estrellas hacia valores menores, la densidad desciende rápidamente hasta aplanarse cerca de 3.6 y caer a cero.
+
+Del diagrama de cajas y bigotes concluimos que la mediana se ubica en 4.5 estrellas. La mitad de los datos se encuentra entre 4.3 estrellas y 4.8 estrellas. El bigote superior alcanza la calificación máxima de 5 estrellas, mientras que el bigote inferior se extiende hasta las 3.7 estrellas. Por debajo de este límite, se observan valores atípicos que estan representados por valor minimo y punto de calificación en 3.2 estrellas.  
+
+## 7.16 `restaurant_preparation_time_minutes`
+
+```{r restaurant-preparation-time}
+sum(is.na(Comida_original$restaurant_preparation_time_minutes))
+mean(Comida_original$restaurant_preparation_time_minutes)
+sd(Comida_original$restaurant_preparation_time_minutes)
+min(Comida_original$restaurant_preparation_time_minutes)
+max(Comida_original$restaurant_preparation_time_minutes)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$restaurant_preparation_time_minutes, breaks = seq(0, 75, by = 5), right = FALSE, col = "salmon", border = "black", main = "Tiempo de preparacion", xlab = "Tiempo (minutos)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 75, by = 10))
+lines(density(Comida_original$restaurant_preparation_time_minutes), col = "firebrick4", lwd = 2)
+plot(density(Comida_original$restaurant_preparation_time_minutes), col = "firebrick4", lwd = 2, main = "Densidad del tiempo de preparacion", xlab = "Tiempo (minutos)", ylab = "Densidad")
+boxplot(Comida_original$restaurant_preparation_time_minutes, horizontal = TRUE, col = "lightsalmon", border = "black", main = "Boxplot del tiempo de preparacion", xlab = "Tiempo (minutos)")
+par(op)
+```
+
+Del histograma podemos afirmar que la categoría con mayor volumen corresponde al intervalo de 10 a 15 minutos. La distribución muestra una clara asimetría positiva (sesgada a la derecha), lo que demuestra que la gran mayoría de las órdenes se preparan rápidamente, mientras que las preparaciones que toman más de 30 minutos representan una minoría.
+
+En el gráfico de densidad, vemos que la curva es unimodal con un sesgo hacia la derecha, alcanzando su punto de máxima densidad alrededor de los 12 a 14 minutos. A partir de este pico, la probabilidad desciende de manera continua hasta aplanarse cerca de los 35 minutos y extender una cola larga hacia los tiempos de cocina más largos.
+
+Finalmente en el diagrama de cajas y bigotes observamos que la mediana se ubica en 14 minutos. La mitad de los datos se encuentra entre los 10 minutos y los 19 minutos. El bigote inferior inicia en el valor mínimo de 5 minutos, mientras que el bigote superior va hasta los 32 minutos. Por encima de este límite, se observa una notable concentración de valores atípicos que alcanzan un tiempo máximo de preparación de 73 minutos.
+
+
+## 7.17 `estimated_delivery_time_minutes`
+
+```{r estimated-delivery-time}
+sum(is.na(Comida_original$estimated_delivery_time_minutes))
+mean(Comida_original$estimated_delivery_time_minutes)
+sd(Comida_original$estimated_delivery_time_minutes)
+min(Comida_original$estimated_delivery_time_minutes)
+max(Comida_original$estimated_delivery_time_minutes)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$estimated_delivery_time_minutes, breaks = seq(0, 130, by = 10), right = FALSE, col = "blue", border = "black", main = "Tiempo estimado de entrega", xlab = "Tiempo estimado (minutos)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 130, by = 10))
+lines(density(Comida_original$estimated_delivery_time_minutes), col = "blue4", lwd = 2)
+plot(density(Comida_original$estimated_delivery_time_minutes), col = "blue4", lwd = 2, main = "Densidad del tiempo estimado", xlab = "Tiempo estimado (minutos)", ylab = "Densidad")
+boxplot(Comida_original$estimated_delivery_time_minutes, horizontal = TRUE, col = "lightblue", border = "black", main = "Boxplot del tiempo estimado", xlab = "Tiempo estimado (minutos)")
+par(op)
+```
+
+Del histograma podemos afirmar que la categoría con mayor volumen corresponde al intervalo de 20 a 30 minutos. La distribución muestra un claro sesgo positivo hacia la derecha, evidenciando que la gran mayoría de las estimaciones del algoritmo se sitúan en rangos entre 20 y 40 minutos, mientras que las estimaciones superiores a los 60 minutos representan una proporción mínima del total.
+
+Del gráfico de densidad podemos afirmar que la curva es unimodal, alcanzando su pico máximo de probabilidad alrededor de los 24 a 26 minutos. A partir de este pico, la densidad desciende de forma continua hasta aplanarse cerca de los 60 minutos y extender una cola larga hacia estimaciones atípicas de más de 100 minutos.
+
+Del diagrama de cajas y bigotes podemos afirmar que la mediana se ubica en los 28 minutos. La mitad de los datos se encuentra entre los 22 minutos y los 37 minutos. El bigote inferior inicia en el valor mínimo aproximado de 10 minutos, mientras que el bigote superior va hasta cerca de los 60 minutos. Por encima de este límite, se observa una alta presencia de valores atípicos que llegan hasta estimaciones máximas de mas de 120, 128 minutos que es el dato máximo .
+
+## 7.18 `actual_delivery_time_minutes`
+
+```{r actual-delivery-time}
+sum(is.na(Comida_original$actual_delivery_time_minutes))
+mean(is.na(Comida_original$actual_delivery_time_minutes)) * 100
+mean(Comida_original$actual_delivery_time_minutes, na.rm = TRUE)
+sd(Comida_original$actual_delivery_time_minutes, na.rm = TRUE)
+min(Comida_original$actual_delivery_time_minutes, na.rm = TRUE)
+max(Comida_original$actual_delivery_time_minutes, na.rm = TRUE)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$actual_delivery_time_minutes, breaks = seq(0, 180, by = 10), right = FALSE, col = "darkseagreen3", border = "black", main = "Tiempo real de entrega", xlab = "Tiempo real (minutos)", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(0, 180, by = 20))
+lines(density(Comida_original$actual_delivery_time_minutes, na.rm = TRUE), col = "darkgreen", lwd = 2)
+plot(density(Comida_original$actual_delivery_time_minutes, na.rm = TRUE), col = "darkgreen", lwd = 2, main = "Densidad del tiempo real", xlab = "Tiempo real (minutos)", ylab = "Densidad")
+boxplot(Comida_original$actual_delivery_time_minutes, horizontal = TRUE, col = "palegreen", border = "black", main = "Boxplot del tiempo real", xlab = "Tiempo real (minutos)")
+par(op)
+```
+
+En el histograma vemos que la categoría con mayor volumen corresponde al intervalo de 20 a 30 minutos, seguida de cerca por el intervalo de 30 a 40 minutos. La distribución muestra un claro sesgo positivo hacia la derecha, evidenciando que la gran mayoría de las entregas se completan en tiempos operativos eficientes (entre 20 y 50 minutos), mientras que las entregas que toman más de 70 minutos son poco frecuentes.
+
+Del gráfico de densidad podemos afirmar que la curva es unimodal, alcanzando su pico de máxima probabilidad alrededor de los 28 a 30 minutos. A partir de este pico, la densidad desciende de forma continua hasta aplanarse cerca de los 80 minutos y extender una cola larga hacia tiempos atípicos superiores a los 120 minutos.
+
+En el diagrama de cajas y bigotes vemos que la mediana se ubica en aproximadamente 30 minutos. La mitad de los datos se encuentra entre los 25 minutos y aproximadamente 40 minutos. El bigote inferior inicia en el valor mínimo de 10 minutos, mientras que el bigote superior se extiende hasta cerca de los 70 minutos. Por encima de este límite, se observa una notable concentración de valores atípicos que llegan hasta tiempos máximos de entrega de 172 minutos.
+
+## 7.19 `late_delivery`
+
+Como el minimo y el maximo ya habian mostrado el rango 0-1 con valores faltantes, queremos confirmar si realmente solo existen dos categorias observables.
+
+Primero revisamos si habia faltantes, luego calculamos la media, la desviacion estandar y el rango, despues confirmamos los valores unicos y finalmente usamos la tabla de frecuencias para ver la distribucion de entregas tardias.
+
+```{r late-delivery}
+sum(is.na(Comida_original$late_delivery))
+mean(is.na(Comida_original$late_delivery)) * 100
+mean(Comida_original$late_delivery, na.rm = TRUE)
+sd(Comida_original$late_delivery, na.rm = TRUE)
+min(Comida_original$late_delivery, na.rm = TRUE)
+max(Comida_original$late_delivery, na.rm = TRUE)
+unique(Comida_original$late_delivery)
+table(Comida_original$late_delivery, useNA = "always")
+prop.table(table(Comida_original$late_delivery, useNA = "always")) * 100
+round(prop.table(table(Comida_original$late_delivery, useNA = "always")) * 100, 2)
+
+tabla_late_delivery <- table(
+  Comida_original$late_delivery,
+  useNA = "ifany"
+)
+
+tabla_late_delivery_df <- data.frame(
+  Categoria = c("No tardia (0)", "Tardia (1)", "NA"),
+  Frecuencia = as.vector(tabla_late_delivery),
+  Porcentaje = round(as.vector(prop.table(tabla_late_delivery)) * 100, 2)
+)
+
+tabla_late_delivery_df
+
+barplot(tabla_late_delivery, names.arg = c("No tardia (0)", "Tardia (1)", "NA"), col = c("steelblue", "tomato", "gray70"), border = "white", main = "Entrega tardia", ylab = "Frecuencia")
+```
+
+Del diagrama de barras podemos concluir que la categoría predominante es la de No tardía (0), la cual como vimos con los comandos anteriores concentra 31,164 pedidos equivalentes al 62.33% del total de los registros. Por su parte, los pedidos con Entrega tardía (1) corresponden a 17,968 pedidos, representando el 35.93% del total. Finalmente, la categoría NA abarca 868 pedidos, el 1.74%, los cuales en nuestro analisis corresponden a las transacciones canceladas en las que no existió un registro de entrega final.
+
+De este análisis se desprende que más de un tercio (más del 33%) de las órdenes completadas sufren retrasos respecto al tiempo estimado.
+
+## 7.20 `customer_rating`
+
+```{r customer-rating}
+sum(is.na(Comida_original$customer_rating))
+mean(is.na(Comida_original$customer_rating)) * 100
+mean(Comida_original$customer_rating, na.rm = TRUE)
+sd(Comida_original$customer_rating, na.rm = TRUE)
+min(Comida_original$customer_rating, na.rm = TRUE)
+max(Comida_original$customer_rating, na.rm = TRUE)
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(4.2, 4.2, 3.2, 1.2))
+hist(Comida_original$customer_rating, breaks = seq(1.4, 5.2, by = 0.2), right = FALSE, col = "goldenrod1", border = "black", main = "Calificacion del cliente", xlab = "Calificacion", ylab = "Frecuencia", xaxt = "n")
+axis(1, at = seq(1.5, 5.0, by = 0.5))
+lines(density(Comida_original$customer_rating, na.rm = TRUE), col = "gold4", lwd = 2)
+plot(density(Comida_original$customer_rating, na.rm = TRUE), col = "gold4", lwd = 2, main = "Densidad de la calificacion", xlab = "Calificacion", ylab = "Densidad")
+boxplot(Comida_original$customer_rating, horizontal = TRUE, col = "khaki2", border = "black", main = "Boxplot de la calificacion", xlab = "Calificacion")
+par(op)
+```
+
+Del histograma, concluimos que la categoría con mayor volumen corresponde al intervalo de 4.4 a 4.6 estrellas, seguido de cerca por el rango de 4.6 a 4.8 estrellas. La distribución presenta un claro sesgo negativo hacia la izquierda, lo que demuestra que la gran mayoría de los clientes ostentan puntuaciones elevadas (por encima de 4.0 estrellas), mientras que las calificaciones inferiores a 3.0 estrellas resultan muy poco comunes.
+
+EN el gráfico de densidad vemos que la curva es bimodal, mostrando un primer pico entre 4.3 y 4.5 estrellas y un segundo pico justo en las 5 estrellas. Hacia la izquierda de las 3.5 estrellas, la densidad cae progresivamente hasta aplanarse cerca de 2 estrellas.
+
+Del diagrama de cajas y bigotes, vemos que la mediana se ubica en las 4.4 estrellas. La mitad de los datos se encuentra entre las 4 estrellas y las 4.7. El bigote superior alcanza la calificación máxima de 5 estrellas, mientras que el bigote inferior se extiende hasta las 3 estrellas. Por debajo de este límite, se observan valores atípicos representados por la secuencia de puntos de puntuación entre 1.8 estrellas que es el minimo y 2.9 estrellas.
+
+# 7 Analisis univariado de Variables Categoricas 
+## 7.21 `day_of_week`
+
+```{r day-week}
+sum(is.na(Comida_original$day_of_week))
+unique(Comida_original$day_of_week)
+table(Comida_original$day_of_week)
+prop.table(table(Comida_original$day_of_week)) * 100
+round(prop.table(table(Comida_original$day_of_week)) * 100, 2)
+
+tabla_day_of_week <- table(Comida_original$day_of_week)
+
+tabla_day_of_week_df <- data.frame(
+  Categoria = names(tabla_day_of_week),
+  Frecuencia = as.vector(tabla_day_of_week),
+  Porcentaje = round(as.vector(prop.table(tabla_day_of_week)) * 100, 2)
+)
+
+tabla_day_of_week_df
+
+barplot(tabla_day_of_week, col = "steelblue", border = "white", main = "Distribucion por dia de la semana", ylab = "Frecuencia", las = 2)
+```
+
+Del diagrama de barras podemos concluir que el día con mayor volumen de pedidos es el jueves (Thursday), alcanzando una frecuencia superior a los 8,400 registros, seguido de cerca por el miércoles (Wednesday) con más de 8,100 pedidos. Los demás días de la semana (viernes, lunes, sábado, domingo y martes) presentan un comportamiento sumamente uniforme entre sí, concentrando aproximadamente 6,600 a 6,700 pedidos cada uno. Esto demuestra que la demanda operativa se intensifica significativamente hacia la mitad y finales de la semana laboral (miércoles y jueves), manteniéndose estable durante el resto de los días.
+
+
+## 7.22 `city`
+
+```{r city}
+sum(is.na(Comida_original$city))
+unique(Comida_original$city)
+table(Comida_original$city)
+prop.table(table(Comida_original$city)) * 100
+round(prop.table(table(Comida_original$city)) * 100, 2)
+
+tabla_city <- table(Comida_original$city)
+
+tabla_city_df <- data.frame(
+  Categoria = names(tabla_city),
+  Frecuencia = as.vector(tabla_city),
+  Porcentaje = round(as.vector(prop.table(tabla_city)) * 100, 2)
+)
+
+tabla_city_df
+
+barplot(tabla_city, col = "coral", border = "white", main = "Distribucion de pedidos por ciudad", ylab = "Frecuencia", las = 2)
+```
+
+Del diagrama de barras podemos concluir que la ciudad con mayor volumen de transacciones es City_A, la cual domina ampliamente la operación concentrando 20,000 pedidos (40.00%) del total. Le sigue en importancia City_B con 15,000 pedidos (30.00%), City_C con 10,000 pedidos (20.00%) y, en último lugar, City_D con 5,000 pedidos (10.00%). Esta clara estructura decreciente demuestra una marcada concentración del mercado en City_A y City_B (sumando entre ambas el 70% de la demanda global de la plataforma).
+
+## 7.23 `delivery_area`
+
+
+```{r delivery-area}
+sum(is.na(Comida_original$delivery_area))
+unique(Comida_original$delivery_area)
+table(Comida_original$delivery_area)
+prop.table(table(Comida_original$delivery_area)) * 100
+round(prop.table(table(Comida_original$delivery_area)) * 100, 2)
+
+tabla_delivery_area <- table(Comida_original$delivery_area)
+
+tabla_delivery_area_df <- data.frame(
+  Categoria = names(tabla_delivery_area),
+  Frecuencia = as.vector(tabla_delivery_area),
+  Porcentaje = round(as.vector(prop.table(tabla_delivery_area)) * 100, 2)
+)
+
+tabla_delivery_area_df
+
+barplot(tabla_delivery_area, col = "mediumseagreen", border = "white", main = "Pedidos por zona de entrega", ylab = "Frecuencia", las = 2)
+```
+
+Del diagrama de barras podemos concluir que la variable se encuentra estructurada en 40 zonas operacionales distribuidas equitativamente en 10 sectores por cada ciudad (de la Area_1 a la Area_10 para A, B, C y D). Las zonas pertenecientes a City_A (A_Area_1 a A_Area_10) representan el bloque de mayor demanda, registrando aproximadamente 2,000 pedidos por zona. A estas le siguen en orden descendente las zonas de City_B con cerca de 1,500 pedidos por zona, las de City_C con 1,000 pedidos por zona y, finalmente, las zonas de City_D con alrededor de 500 pedidos por zona. Dentro de cada ciudad, las 10 subzonas mantienen un comportamiento sumamente uniforme entre sí, lo que confirma que la demanda no presenta sesgos internos dentro de una misma ciudad, sino que depende directamente del volumen global de la metrópoli a la que pertenecen.
+
+## 7.24 `customer_type`
+
+
+```{r customer-type}
+sum(is.na(Comida_original$customer_type))
+unique(Comida_original$customer_type)
+table(Comida_original$customer_type)
+prop.table(table(Comida_original$customer_type)) * 100
+round(prop.table(table(Comida_original$customer_type)) * 100, 2)
+
+tabla_customer_type <- table(Comida_original$customer_type)
+
+tabla_customer_type_df <- data.frame(
+  Categoria = names(tabla_customer_type),
+  Frecuencia = as.vector(tabla_customer_type),
+  Porcentaje = round(as.vector(prop.table(tabla_customer_type)) * 100, 2)
+)
+
+tabla_customer_type_df
+
+barplot(tabla_customer_type, col = c("darkorange", "dodgerblue"), border = "white", main = "Tipo de cliente", ylab = "Frecuencia")
+```
+
+Del diagrama de barras de esta variable podemos concluir que la categoría predominante es la de clientes Regular, la cual domina concentrando exactamente 25,000 pedidos (50.00%) del total de las transacciones. En segundo lugar se ubican los clientes Premium con 15,000 pedidos (30.00%), mientras que los usuarios New (nuevos) representan el grupo menor con 10,000 pedidos (20.00%). De este análisis se desprende que el 80% del volumen de órdenes de la plataforma proviene de usuarios consolidados (regulares y premium), evidenciando una sólida base de retención de clientes.
+
+## 7.25 `restaurant_type`
+
+
+```{r restaurant.type}
+sum(is.na(Comida_original$restaurant_type))
+unique(Comida_original$restaurant_type)
+table(Comida_original$restaurant_type)
+prop.table(table(Comida_original$restaurant_type)) * 100
+round(prop.table(table(Comida_original$restaurant_type)) * 100, 2)
+
+tabla_restaurant_type <- table(Comida_original$restaurant_type)
+
+tabla_restaurant_type_df <- data.frame(
+  Categoria = names(tabla_restaurant_type),
+  Frecuencia = as.vector(tabla_restaurant_type),
+  Porcentaje = round(as.vector(prop.table(tabla_restaurant_type)) * 100, 2)
+)
+
+tabla_restaurant_type_df
+
+barplot(tabla_restaurant_type, col = "orchid", border = "white", main = "Tipo de restaurante", ylab = "Frecuencia", las = 2)
+```
+
+Del diagrama de barras podemos concluir que la categoría con mayor volumen es Fast Food (comida rápida), la cual domina ampliamente el mercado concentrando 27,500 pedidos (55.00%) del total de las transacciones. Le sigue en importancia Casual Dining con 13,000 pedidos (26.00%) y las cafeterías (Cafe) con 8,200 pedidos (16.40%). Por último, los restaurantes de alta cocina (Fine Dining) representan un volumen marginal con únicamente 1,300 pedidos (2.60%). Esta marcada diferencia demuestra que la demanda en la plataforma está orientada casi en su totalidad hacia opciones de preparación ágil e informal (sumando el 97.4% entre comida rápida, casual y café), mientras que el segmento gourmet tiene una presencia mínima en el servicio a domicilio.
+
+
+## 7.26 `restaurant_primary_category`
+
+
+```{r restaurant-primary-category}
+sum(is.na(Comida_original$restaurant_primary_category))
+unique(Comida_original$restaurant_primary_category)
+table(Comida_original$restaurant_primary_category)
+prop.table(table(Comida_original$restaurant_primary_category)) * 100
+round(prop.table(table(Comida_original$restaurant_primary_category)) * 100, 2)
+
+tabla_primary_cat <- table(Comida_original$restaurant_primary_category)
+
+tabla_primary_cat_df <- data.frame(
+  Categoria = names(tabla_primary_cat),
+  Frecuencia = as.vector(tabla_primary_cat),
+  Porcentaje = round(as.vector(prop.table(tabla_primary_cat)) * 100, 2)
+)
+
+tabla_primary_cat_df
+
+barplot(tabla_primary_cat, col = "goldenrod", border = "white", main = "Categoria principal del restaurante", ylab = "Frecuencia", las = 2)
+```
+
+Del diagrama de barras de esta variable podemos concluir que la categoría predominante con el mayor volumen de pedidos es Burger (hamburguesas), concentrando 16,200 pedidos (32.40%) del total de las transacciones. En segundo lugar se ubica la comida Local con 12,700 pedidos (25.40%), seguida por los postres y repostería (Dessert) con 9,500 pedidos (19.00%). Por su parte, las opciones de Pizza registran 4,100 pedidos (8.20%), la comida asiática (Asian) abarca 3,800 pedidos (7.60%) y la comida saludable (Healthy) representa la categoría menor con 3,700 pedidos (7.40%). De este análisis se desprende que las hamburguesas y la comida local representan más de la mitad de la demanda global de la plataforma (57.80%), reflejando una clara preferencia hacia platos tradicionales y comida rápida sabrosa.
+
+
+## 7.27 `payment_method`
+
+
+```{r payment-method}
+sum(is.na(Comida_original$payment_method))
+unique(Comida_original$payment_method)
+table(Comida_original$payment_method)
+prop.table(table(Comida_original$payment_method)) * 100
+round(prop.table(table(Comida_original$payment_method)) * 100, 2)
+
+tabla_payment_method <- table(Comida_original$payment_method)
+
+tabla_payment_method_df <- data.frame(
+  Categoria = names(tabla_payment_method),
+  Frecuencia = as.vector(tabla_payment_method),
+  Porcentaje = round(as.vector(prop.table(tabla_payment_method)) * 100, 2)
+)
+
+tabla_payment_method_df
+
+barplot(tabla_payment_method, col = "lightskyblue", border = "white", main = "Metodos de pago utilizados", ylab = "Frecuencia")
+```
+
+Del diagrama de barras podemos concluir que la categoría predominante es la tarjeta de crédito (Credit Card), la cual domina concentrando exactamente 25,000 pedidos (50.00%) del total de las transacciones. En segundo lugar se ubica el pago en efectivo (Cash) con 15,000 pedidos (30.00%), mientras que las billeteras digitales (Digital Wallet) representan el menor volumen con 10,000 pedidos (20.00%). De aqui concluimos que la mayoria de los pagos se hacen haciedno uso de medios digitales.
+
+
+## 7.28 `weather`
+
+
+```{r weather}
+sum(is.na(Comida_original$weather))
+unique(Comida_original$weather)
+table(Comida_original$weather)
+prop.table(table(Comida_original$weather)) * 100
+round(prop.table(table(Comida_original$weather)) * 100, 2)
+
+tabla_weather <- table(Comida_original$weather)
+
+tabla_weather_df <- data.frame(
+  Categoria = names(tabla_weather),
+  Frecuencia = as.vector(tabla_weather),
+  Porcentaje = round(as.vector(prop.table(tabla_weather)) * 100, 2)
+)
+
+tabla_weather_df
+
+barplot(tabla_weather, col = "lightblue3", border = "white", main = "Condicion climatica durante el pedido", ylab = "Frecuencia")
+```
+
+Del diagrama de barras podemos concluir que la categoría predominante con el mayor volumen es clima despejado (Clear), concentrando 28,000 pedidos (56.00%) del total. En segundo lugar se ubica el clima nublado (Cloudy) con 12,800 pedidos (25.60%), seguido por la lluvia (Rain) con 7,700 pedidos (15.40%). Por su parte, las tormentas (Storm) representan la categoría menor con 1,500 pedidos (3.00%). De este análisis se desprende que el 81.60% de los pedidos se realizan bajo condiciones climáticas normales o favorables (despejado o nublado), mientras que las condiciones adversas (lluvia y tormenta) abarcan el 18.40% restante.
+
+
+## 7.29 `traffic_level`
+
+
+```{r traffic-level}
+sum(is.na(Comida_original$traffic_level))
+unique(Comida_original$traffic_level)
+table(Comida_original$traffic_level)
+prop.table(table(Comida_original$traffic_level)) * 100
+round(prop.table(table(Comida_original$traffic_level)) * 100, 2)
+
+tabla_traffic_level <- table(Comida_original$traffic_level)
+
+tabla_traffic_level_df <- data.frame(
+  Categoria = names(tabla_traffic_level),
+  Frecuencia = as.vector(tabla_traffic_level),
+  Porcentaje = round(as.vector(prop.table(tabla_traffic_level)) * 100, 2)
+)
+
+tabla_traffic_level_df
+
+barplot(tabla_traffic_level, col = c("palegreen3", "khaki1", "salmon"), border = "white", main = "Nivel de trafico registrado", ylab = "Frecuencia")
+```
+
+Del diagrama de barras de esta variable podemos concluir que la categoría predominante es tráfico medio (Medium), concentrando 20,000 pedidos (40.00%) del total. Por su parte, las categorías de tráfico alto (High) y tráfico bajo (Low) presentan un comportamiento prácticamente idéntico entre sí, registrando 15,200 pedidos (30.40%) y 14,800 pedidos (29.60%) respectivamente. De esto podemos afirmar que el 70.40% de los envíos se realizan bajo condiciones de congestión moderada o alta (tráfico medio y alto), convirtiendo a la movilidad urbana en un factor determinante que influirá de forma directa en los tiempos reales de entrega de la plataforma.
+
+
+## 7.30 `order_status`
+
+
+```{r order-status}
+sum(is.na(Comida_original$order_status))
+unique(Comida_original$order_status)
+table(Comida_original$order_status)
+prop.table(table(Comida_original$order_status)) * 100
+round(prop.table(table(Comida_original$order_status)) * 100, 2)
+
+tabla_order_status <- table(Comida_original$order_status)
+
+tabla_order_status_df <- data.frame(
+  Categoria = names(tabla_order_status),
+  Frecuencia = as.vector(tabla_order_status),
+  Porcentaje = round(as.vector(prop.table(tabla_order_status)) * 100, 2)
+)
+
+tabla_order_status_df
+
+barplot(tabla_order_status, col = c("seagreen3", "indianred2"), border = "white", main = "Estado final de las ordenes", ylab = "Frecuencia")
+```
+
+Del diagrama de barras podemos concluir que la categoría absolutamente predominante es Completed (órdenes completadas), la cual abarca 49,132 pedidos (98.26%) del total de la base de datos. Por su parte, la categoría Cancelled (órdenes canceladas) representa un volumen marginal con 868 pedidos (1.74%). De esto podemos afirmar que la plataforma mantiene una tasa de efectividad operativa muy alta (superior al 98%), y confirma que la pequeña proporción de transacciones canceladas es la causa directa que genera la presencia de valores faltantes (NA) en las variables de cierre logístico como el tiempo real de entrega, la propina y la calificación del cliente.
+
+## 7.31 `cancellation_reason`
+
+
+```{r cancellation-reason}
+sum(is.na(Comida_original$cancellation_reason))
+table(Comida_original$cancellation_reason, useNA = "always")
+prop.table(table(Comida_original$cancellation_reason, useNA = "always")) * 100
+round(prop.table(table(Comida_original$cancellation_reason, useNA = "always")) * 100, 2)
+
+tabla_cancel <- table(Comida_original$cancellation_reason, useNA = "ifany")
+
+tabla_cancel_df <- data.frame(
+  Categoria = ifelse(is.na(names(tabla_cancel)), "Completado (No cancelado)", names(tabla_cancel)),
+  Frecuencia = as.vector(tabla_cancel),
+  Porcentaje = round(as.vector(prop.table(tabla_cancel)) * 100, 2)
+)
+
+tabla_cancel_df
+
+barplot(tabla_cancel, col = "darksalmon", border = "white", main = "Motivos de cancelacion de la orden", ylab = "Frecuencia", las = 2)
+```
+
+Del diagrama de barras de esta variable final podemos concluir que la categoría absolutamente predominante corresponde a los datos faltantes o en blanco (NA / Completados), representados por la primera barra masiva que concentra 49,132 pedidos (98.26%) del total de la base de datos. Esta barra refleja la totalidad de las órdenes que se entregaron con éxito y que, por ende, no registran una causa de anulación.   Por su parte, dentro del 1.74% (868 pedidos) de órdenes canceladas, las razones específicas se distribuyen en frecuencias muy bajas entre motivos como falta de repartidor asignado (Unassigned), cambio de opinión del cliente (Changed Mind), retrasos en la preparación del restaurante (Prep Delay), indisponibilidad de productos (Unavailable) o cancelación directa por el usuario (User Cancelled).
+
+# 8. Matriz de correlación con variables númericas apropiadas
+
+Para la matriz de correlación solo se utilizan variables númericas que tienen sentido estadistico y no se incluyen identificadores ni variables binarias codificadas como números.
+
+```{r matriz-correlacion}
+round(matriz_correlacion, 2)
+
+corrplot::corrplot(
+  matriz_correlacion,
+  method = "color",
+  type = "upper",
+  order = "hclust",
+  tl.col = "black",
+  tl.srt = 45,
+  tl.cex = 0.7,
+  addCoef.col = "black",
+  number.cex = 0.55,
+  mar = c(0, 0, 2, 0),
+  title = "Matriz de correlacion de variables numericas"
+)
+```
+
+La correlacion mas alta con `actual_delivery_time_minutes` aparece con `estimated_delivery_time_minutes`, seguida por `distance_km` y `restaurant_preparation_time_minutes`. Esto sugiere que el tiempo real de entrega se relaciona sobre todo con el tiempo estimado, la distancia y el tiempo de preparacion.
+
+```{r correlaciones-target}
+correlaciones_objetivo <- sort(matriz_correlacion["actual_delivery_time_minutes", ], decreasing = TRUE)
+round(correlaciones_objetivo, 3)
+```
+
+# 9. Analisis bivariado
+
+Se seleccionan seis relaciones a partir de la matriz de correlacion, de las tendencias observadas y de su relevancia para la variable objetivo.
+
+## 9.1 Tiempo real de entrega y tiempo estimado de entrega
+
+Esta es la relacion principal porque compara la variable objetivo con una de las variables operativas mas cercanas al proceso de entrega.
+
+```{r biv-1}
+cor_1 <- cor(
+  Comida_original$actual_delivery_time_minutes,
+  Comida_original$estimated_delivery_time_minutes,
+  use = "complete.obs"
+)
+
+plot(
+  Comida_original$estimated_delivery_time_minutes,
+  Comida_original$actual_delivery_time_minutes,
+  pch = 16,
+  col = rgb(0.2, 0.4, 0.7, 0.35),
+  main = paste0("Tiempo real vs tiempo estimado | r = ", round(cor_1, 3)),
+  xlab = "Tiempo estimado de entrega (minutos)",
+  ylab = "Tiempo real de entrega (minutos)"
+)
+abline(lm(Comida_original$actual_delivery_time_minutes ~ Comida_original$estimated_delivery_time_minutes), col = "red", lwd = 2)
+cor_1
+```
+
+Se observa una asociacion lineal positiva muy alta. Esto indica que, cuando aumenta el tiempo estimado, tambien suele aumentar el tiempo real de entrega.
+
+## 9.2 Tiempo real de entrega y distancia recorrida
+
+```{r biv-2}
+cor_2 <- cor(
+  Comida_original$actual_delivery_time_minutes,
+  Comida_original$distance_km,
+  use = "complete.obs"
+)
+
+plot(
+  Comida_original$distance_km,
+  Comida_original$actual_delivery_time_minutes,
+  pch = 16,
+  col = rgb(0.2, 0.4, 0.7, 0.35),
+  main = paste0("Tiempo real vs distancia | r = ", round(cor_2, 3)),
+  xlab = "Distancia recorrida (km)",
+  ylab = "Tiempo real de entrega (minutos)"
+)
+abline(lm(Comida_original$actual_delivery_time_minutes ~ Comida_original$distance_km), col = "red", lwd = 2)
+cor_2
+```
+
+La relacion es positiva y relativamente fuerte. Los datos sugieren que a mayor distancia recorrida, mayor tiempo real de entrega.
+
+## 9.3 Tiempo real de entrega y tiempo de preparacion del restaurante
+
+```{r biv-3}
+cor_3 <- cor(
+  Comida_original$actual_delivery_time_minutes,
+  Comida_original$restaurant_preparation_time_minutes,
+  use = "complete.obs"
+)
+
+plot(
+  Comida_original$restaurant_preparation_time_minutes,
+  Comida_original$actual_delivery_time_minutes,
+  pch = 16,
+  col = rgb(0.2, 0.4, 0.7, 0.35),
+  main = paste0("Tiempo real vs preparacion | r = ", round(cor_3, 3)),
+  xlab = "Tiempo de preparacion (minutos)",
+  ylab = "Tiempo real de entrega (minutos)"
+)
+abline(lm(Comida_original$actual_delivery_time_minutes ~ Comida_original$restaurant_preparation_time_minutes), col = "red", lwd = 2)
+cor_3
+```
+
+Se aprecia una asociacion positiva moderada. Esto es coherente con la idea de que una preparacion mas larga tiende a aumentar el tiempo total de entrega.
+
+## 9.4 Tiempo real de entrega y nivel de trafico
+
+```{r biv-4}
+trafico <- factor(Comida_original$traffic_level, levels = c("Low", "Medium", "High"), ordered = TRUE)
+boxplot(
+  Comida_original$actual_delivery_time_minutes ~ trafico,
+  col = c("#b7e1cd", "#fce5cd", "#f4cccc"),
+  xlab = "Nivel de trafico",
+  ylab = "Tiempo real de entrega (minutos)",
+  main = "Tiempo real de entrega segun el trafico"
+)
+
+round(tapply(Comida_original$actual_delivery_time_minutes, trafico, median, na.rm = TRUE), 2)
+```
+
+La distribucion por grupos permite ver diferencias entre niveles de trafico. En general, el trafico mas alto se asocia con tiempos de entrega mas elevados.
+
+## 9.5 Tiempo real de entrega y clima
+
+```{r biv-5}
+boxplot(
+  Comida_original$actual_delivery_time_minutes ~ Comida_original$weather,
+  col = c("#d9ead3", "#cfe2f3", "#fce5cd", "#d9d2e9"),
+  xlab = "Condicion climatica",
+  ylab = "Tiempo real de entrega (minutos)",
+  main = "Tiempo real de entrega segun el clima"
+)
+
+round(tapply(Comida_original$actual_delivery_time_minutes, Comida_original$weather, median, na.rm = TRUE), 2)
+```
+
+No se espera una relacion tan fuerte como en el caso del tiempo estimado o la distancia, pero el clima permite revisar si existen diferencias visibles entre condiciones externas.
+
+## 9.6 Entrega tardia y tiempo estimado de entrega
+
+```{r biv-6}
+late_factor <- factor(Comida_original$late_delivery, levels = c(0, 1), labels = c("No", "Si"))
+boxplot(
+  Comida_original$estimated_delivery_time_minutes ~ late_factor,
+  col = c("#c9daf8", "#f4cccc"),
+  xlab = "Entrega tardia",
+  ylab = "Tiempo estimado de entrega (minutos)",
+  main = "Tiempo estimado segun entrega tardia"
+)
+
+round(tapply(Comida_original$estimated_delivery_time_minutes, late_factor, median, na.rm = TRUE), 2)
+```
+
+Esta relacion ayuda a interpretar la variable secundaria `late_delivery`. Si las medianas difieren, entonces el tiempo estimado ya esta capturando parte del comportamiento asociado con retrasos en la entrega.
+
+# 10. Variables mas importantes identificadas hasta este punto
+
+Con base en la matriz de correlacion y en las relaciones bivariadas revisadas, las variables que parecen mas influyentes para explicar el tiempo real de entrega son:
+
+- `estimated_delivery_time_minutes`
+- `distance_km`
+- `restaurant_preparation_time_minutes`
+- `traffic_level`
+- `customer_rating`
+- `order_total`
+- `subtotal`
+- `tax_amount`
+
+La variable `late_delivery` queda como complemento importante porque resume el resultado operativo de una entrega con demora.
+
+# 11. Principales hallazgos del avance
+
+En este primer avance se observa que el dataset tiene una estructura amplia pero organizada, con identificadores, variables temporales, categoricas y numericas.
+
+Tambien se aprecia que el tiempo real de entrega depende con mayor claridad de tres factores: el tiempo estimado, la distancia recorrida y el tiempo de preparacion del restaurante.
+
+Los faltantes no se distribuyen de forma uniforme. Se concentran en variables ligadas al cierre de la orden, por lo que deben revisarse con cuidado para no mezclar pedidos completados con pedidos cancelados.
+
+# 12. Preparacion para la siguiente etapa: estandarizacion
+
+Todavia no se realiza la estandarizacion, porque esta entrega corresponde a la exploracion inicial y a la preparacion del dataset.
+
+Para la siguiente etapa quedaran como candidatas a estandarizacion, entre otras:
+
+- `distance_km`
+- `restaurant_preparation_time_minutes`
+- `estimated_delivery_time_minutes`
+- `actual_delivery_time_minutes`
+- `subtotal`
+- `tax_amount`
+- `service_fee`
+- `delivery_fee`
+- `order_total`
+- `tip_amount`
+- `delivery_partner_experience_months`
+- `delivery_partner_rating`
+- `customer_rating`
+
+Por ahora solo se deja definida la seleccion de variables y la revision de tipos, sin aplicar `scale()` ni ninguna transformacion de estandarizacion.
