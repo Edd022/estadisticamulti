@@ -58,3 +58,6 @@ dataset/
 
 # HTML generado a partir de los .Rmd (artefacto, no se versiona)
 *.html
+
+# Guardado local de la conversacion (no es parte del proyecto)
+chat_estadisticamulti.json
