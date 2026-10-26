@@ -1,0 +1,683 @@
+---
+title: "Taller de componentes principales: el resumen y el mapa para su cliente"
+subtitle: "PCA en el dataset de FoodDelivery"
+author: "Edward Julian García, Daniel Alejandro Presiga, Nicolás Andres Yepes"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: cosmo
+    code_folding: show
+    df_print: paged
+    fig_width: 9
+    fig_height: 5.5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.align = "center", fig.width = 9, fig.height = 5.5)
+
+# La Parte A usa solo R base; la Parte B usa ggplot2 para el mapa, el biplot y las elipses.
+suppressPackageStartupMessages(library(ggplot2))
+
+coma <- function(x, d = 1) {
+  formatC(x, format = "f", digits = d, decimal.mark = ",", big.mark = ".")
+}
+miles <- function(x) formatC(x, format = "d", decimal.mark = ",", big.mark = ".")
+colores <- colorRampPalette(c("#F7FBFF", "#6BAED6", "#08306B"))(100)
+```
+
+# Parte A · ¿Un número o varios?
+
+## A1. El encargo
+
+El cliente es el equipo de operaciones de una plataforma de domicilios. Al cerrar los pedidos,
+debe decidir cuáles merecen revisión por experiencia deficiente y posible compensación al cliente.
+Para resumir el perfil operativo de cada pedido se usan diez variables numéricas: cantidad de
+artículos, subtotal, descuento, tarifa de entrega, propina, distancia, experiencia del repartidor,
+tiempo de preparación, tiempo estimado y tiempo real de entrega. Son variables que describen
+tamaño, costo, distancia y duración; se excluyen los identificadores porque no son medidas del
+pedido.
+
+El análisis es **descriptivo de pedidos ya completados**. Por ello puede usar el tiempo real de
+entrega para revisar el servicio, pero no debe interpretarse como un modelo que predice ese tiempo
+antes de que el pedido termine.
+
+```{r leer-y-preparar}
+pedidos <- read.csv("dataset/food_delivery_orders_dataset.csv",
+                    stringsAsFactors = FALSE, na.strings = c("", "NA"))
+
+variables_pca <- c(
+  "items_count", "subtotal", "discount_percent", "delivery_fee", "tip_amount",
+  "distance_km", "delivery_partner_experience_months",
+  "restaurant_preparation_time_minutes", "estimated_delivery_time_minutes",
+  "actual_delivery_time_minutes"
+)
+
+etiquetas <- c(
+  items_count = "Artículos", subtotal = "Subtotal", discount_percent = "Descuento (%)",
+  delivery_fee = "Tarifa entrega", tip_amount = "Propina", distance_km = "Distancia (km)",
+  delivery_partner_experience_months = "Experiencia repartidor (meses)",
+  restaurant_preparation_time_minutes = "Preparación (min)",
+  estimated_delivery_time_minutes = "Entrega estimada (min)",
+  actual_delivery_time_minutes = "Entrega real (min)"
+)
+
+# Se analizan órdenes finalizadas y completas en las diez medidas seleccionadas.
+filas_pca <- pedidos$order_status == "Completed" &
+             complete.cases(pedidos[, variables_pca])
+X <- pedidos[filas_pca, variables_pca]
+names(X) <- etiquetas[names(X)]
+
+# Mismo subconjunto de filas pero con todas las columnas, para colorear el mapa
+# por las variables de grupo del cliente en la Parte B (alineado fila a fila con X).
+pedidos_completos <- pedidos[filas_pca, ]
+
+c(pedidos_en_archivo = nrow(pedidos), pedidos_completados_analizados = nrow(X))
+```
+
+Se conservan `r miles(nrow(X))` pedidos completados con las diez medidas disponibles, de los
+`r miles(nrow(pedidos))` registros del archivo. No se imputan los valores faltantes: para un PCA,
+inventar un tiempo o una propina cambiaría artificialmente la relación entre las variables.
+
+## A2. ¿Se repiten las variables numéricas?
+
+```{r correlaciones, fig.height=7}
+R <- cor(X)
+round(R, 2)
+
+# Matriz de correlaciones: azul más oscuro = variables que se mueven más juntas.
+par(mar = c(7, 7, 3, 5))
+image(1:ncol(R), 1:ncol(R), t(R[nrow(R):1, ]), col = colores, zlim = c(-1, 1),
+      axes = FALSE, xlab = NULL, ylab = NULL,
+      main = "Correlaciones entre las medidas del pedido")
+axis(1, at = 1:ncol(R), labels = colnames(R), las = 2, cex.axis = .72)
+axis(2, at = 1:ncol(R), labels = rev(rownames(R)), las = 2, cex.axis = .72)
+for (i in seq_len(ncol(R))) for (j in seq_len(nrow(R))) {
+  text(i, nrow(R) - j + 1, labels = coma(R[j, i], 2), cex = .62,
+       col = ifelse(abs(R[j, i]) > .55, "white", "black"))
+}
+```
+
+```{r parejas-correlacion, include=FALSE}
+pares <- which(upper.tri(R), arr.ind = TRUE)
+tabla_pares <- data.frame(
+  variable_1 = rownames(R)[pares[, 1]], variable_2 = colnames(R)[pares[, 2]],
+  correlacion = R[pares]
+)
+mayor_par <- tabla_pares[which.max(tabla_pares$correlacion), ]
+promedio_abs <- rowMeans(abs(R - diag(ncol(R))))
+mas_sola <- names(which.min(promedio_abs))
+```
+
+**Qué se ve.** Las variables que más se repiten son **`r mayor_par$variable_1`** y
+**`r mayor_par$variable_2`** (correlación `r coma(mayor_par$correlacion, 2)`).
+**Qué significa.** La dimensión de tiempo estimado y real comparte mucha información; también se
+observa una relación fuerte entre subtotal y preparación. La medida que, en promedio, va más sola
+es **`r mas_sola`**. **Decisión.** Sí tiene sentido buscar resúmenes, pero no se debe esperar que
+un solo indicador conserve todo lo que dice cada variable.
+
+## A3. ¿Hay que estandarizar?
+
+```{r desviaciones}
+desviaciones <- sort(sapply(X, sd), decreasing = TRUE)
+knitr::kable(data.frame(variable = names(desviaciones),
+                         desviacion_estandar = round(desviaciones, 2)),
+             col.names = c("Variable", "Desviación estándar"))
+```
+
+Las desviaciones van desde `r coma(min(desviaciones), 2)` hasta
+`r coma(max(desviaciones), 2)`: subtotal está en dinero, distancia en kilómetros y duración en
+minutos. **Antes de correr el PCA, se decide estandarizar**, pues sin hacerlo las variables con
+unidades y dispersión mayores dominarían el resultado aunque no sean más importantes para el
+cliente.
+
+```{r comparar-pca}
+pca_sin_estandarizar <- prcomp(X, center = TRUE, scale. = FALSE)
+pca <- prcomp(X, center = TRUE, scale. = TRUE)
+
+info_sin <- 100 * pca_sin_estandarizar$sdev^2 / sum(pca_sin_estandarizar$sdev^2)
+info <- 100 * pca$sdev^2 / sum(pca$sdev^2)
+
+knitr::kable(data.frame(
+  analisis = c("Sin estandarizar", "Estandarizado (decisión usada)"),
+  informacion_PC1 = round(c(info_sin[1], info[1]), 2)
+), col.names = c("PCA", "Información en C1 (de cada 100)"))
+```
+
+**Qué se ve.** Sin estandarizar, la primera componente guarda
+`r coma(info_sin[1], 2)` de cada 100; con la decisión adoptada guarda
+`r coma(info[1], 2)`. **Qué significa.** La diferencia no es pequeña: el resultado sin escalar
+está dominado por las unidades con mayor variación. **Decisión.** El resto del informe usa el PCA
+estandarizado, donde cada medida aporta inicialmente una unidad de variación.
+
+## A4. Cuánta información guarda cada componente
+
+```{r informacion, fig.height=5}
+reparto <- data.frame(
+  componente = paste0("C", seq_along(info)),
+  informacion = info,
+  acumulado = cumsum(info)
+)
+knitr::kable(transform(reparto, informacion = round(informacion, 2),
+                       acumulado = round(acumulado, 2)),
+             col.names = c("Componente", "Información (de cada 100)", "Acumulado"))
+
+centros <- barplot(reparto$informacion, names.arg = reparto$componente,
+                   col = c("#2B6CB0", rep("grey70", nrow(reparto) - 1)), ylim = c(0, 105),
+                   ylab = "De cada 100 partes de información",
+                   main = "Información que conserva cada componente")
+lines(centros, reparto$acumulado, type = "b", pch = 19, col = "#C05621", lwd = 2)
+text(centros, reparto$informacion, labels = coma(reparto$informacion, 1), pos = 3, cex = .8)
+legend("bottomright", legend = c("Cada componente", "Acumulado"),
+       fill = c("#2B6CB0", NA), border = c(NA, NA), lty = c(NA, 1),
+       pch = c(NA, 19), col = c("#2B6CB0", "#C05621"), bty = "n")
+```
+
+```{r umbral-80, include=FALSE}
+n_80 <- which(reparto$acumulado >= 80)[1]
+```
+
+**Qué se ve.** La primera componente guarda `r coma(reparto$informacion[1], 2)` de cada 100
+partes de la información. Se requieren `r n_80` componentes para superar 80 de cada 100
+(`r coma(reparto$acumulado[n_80], 2)`). **Qué significa.** Un solo número recoge una parte
+importante del patrón común, pero deja fuera más de 60% de la variación de los pedidos.
+**Decisión.** Para un resumen fiel del historial se deben conservar `r n_80` componentes; el
+indicador único solo puede usarse como una primera señal de priorización.
+
+## A5. ¿Qué mide cada componente?
+
+```{r orientar-y-pesos, fig.height=7}
+# El signo no cambia la componente. Se orienta C1 para que valores altos vayan con mayor tiempo real.
+if (cor(pca$x[, 1], X[["Entrega real (min)"]]) < 0) {
+  pca$x[, 1] <- -pca$x[, 1]
+  pca$rotation[, 1] <- -pca$rotation[, 1]
+}
+pesos <- pca$rotation[, 1:3]
+round(pesos, 3)
+
+par(mfrow = c(1, 3), mar = c(5, 10, 3, 1))
+for (j in 1:3) {
+  ord <- order(abs(pesos[, j]))
+  barplot(pesos[ord, j], horiz = TRUE, las = 1, xlim = c(-.95, .95),
+          names.arg = rownames(pesos)[ord], col = ifelse(pesos[ord, j] >= 0, "#2B6CB0", "#C05621"),
+          main = paste0("C", j), xlab = "Peso")
+  abline(v = 0, col = "grey30")
+}
+par(mfrow = c(1, 1))
+```
+
+**C1: tamaño y duración del pedido.** Pesan más el tiempo estimado, el tiempo real, subtotal,
+preparación y artículos. Valores altos representan pedidos más grandes y de mayor duración; es un
+índice útil para priorizar revisiones, no una prueba de que una variable cause a la otra.
+
+**C2: tamaño/preparación frente a distancia.** Contrapone distancia y tarifa de entrega con el
+bloque de tamaño, subtotal y preparación. Distingue pedidos cuyo esfuerzo proviene principalmente
+del trayecto de aquellos cuyo esfuerzo está más dentro del restaurante.
+
+**C3: descuento y experiencia del repartidor.** Lo dominan el descuento y, en menor medida, la
+experiencia del repartidor; captura una dimensión promocional/operativa bastante independiente del
+volumen y del tiempo. El signo puede invertirse sin modificar esta lectura.
+
+**Decisión.** Las tres primeras componentes permiten contar tres historias distintas del pedido,
+pero como juntas conservan `r coma(reparto$acumulado[3], 2)` de cada 100, no sustituyen el detalle
+en una auditoría completa.
+
+## A6. El costo de decidir con un solo número
+
+Se define como grupo relevante para el cliente el 10% de pedidos con mayor tiempo real de entrega:
+son los casos que deberían entrar primero a una revisión de servicio. Se compara ese grupo con el
+10% de valores más altos de C1, ya orientada para crecer con la entrega real.
+
+```{r costo, fig.height=4.5}
+riesgo <- X[["Entrega real (min)"]] >= quantile(X[["Entrega real (min)"]], .90)
+prioridad_c1 <- pca$x[, 1] >= quantile(pca$x[, 1], .90)
+
+conteo_costo <- c(
+  "Pedidos lentos" = sum(riesgo),
+  "Detectados por C1" = sum(riesgo & prioridad_c1),
+  "Se escapan" = sum(riesgo & !prioridad_c1)
+)
+knitr::kable(data.frame(grupo = names(conteo_costo), pedidos = unname(conteo_costo)),
+             col.names = c("Grupo", "Cantidad de pedidos"))
+
+barplot(conteo_costo, col = c("#718096", "#2B6CB0", "#C05621"), ylim = c(0, max(conteo_costo) * 1.15),
+        ylab = "Pedidos", main = "Costo de priorizar solo con C1")
+text(seq_along(conteo_costo), conteo_costo, labels = miles(conteo_costo), pos = 3)
+```
+
+**Qué se ve.** De `r miles(sum(riesgo))` pedidos lentos, C1 detecta
+`r miles(sum(riesgo & prioridad_c1))` y deja por fuera
+`r miles(sum(riesgo & !prioridad_c1))` (`r coma(100 * sum(riesgo & !prioridad_c1) / sum(riesgo), 1)`%).
+**Qué significa.** El índice general de tamaño y duración encuentra muchos casos, pero confunde
+pedidos lentos cuyo patrón no es el promedio: por ejemplo, los afectados principalmente por distancia
+o por descuentos. **Decisión.** Al cliente no le basta un número: para el resumen estadístico debe
+retener cinco componentes y, en la operación diaria, acompañar C1 con señales separadas de tiempo
+estimado/real y distancia. Así el tablero no deja invisibles los pedidos lentos que responden a un
+patrón operativo diferente.
+
+## Cierre de la Parte A para el cliente
+
+El PCA confirma que existe una dimensión común de tamaño y duración, por lo que C1 es una señal
+razonable para ordenar revisiones. Sin embargo, guardar solo `r coma(reparto$informacion[1], 1)` de
+cada 100 partes de la información y escapar `r miles(sum(riesgo & !prioridad_c1))` pedidos lentos
+es un costo demasiado alto para usarla como única regla. La recomendación es conservar las variables
+originales en las decisiones de servicio, usar las cinco componentes como resumen analítico y usar
+la matriz one-hot como entrada de contexto para modelos posteriores.
+
+# Parte B · El mapa de los pedidos
+
+## B1. El mapa y sus direcciones
+
+Dibujamos cada pedido en el plano de las dos primeras componentes (C1 en el eje horizontal, C2 en
+el vertical). Juntas guardan `r coma(info[1] + info[2], 2)` de cada 100 partes de la información
+(`r coma(info[1], 2)` C1 + `r coma(info[2], 2)` C2).
+
+**Cómo fijamos el signo.** El signo de una componente es arbitrario, así que lo fijamos para que el
+mapa se lea de forma intuitiva:
+
+- **C1** ya quedó orientada en la Parte A para que **crezca con el tiempo real de entrega**: a la
+  derecha hay pedidos más grandes y de mayor duración.
+- **C2** la fijamos para que **crezca con la distancia**: así "hacia arriba" significa pedidos cuyo
+  esfuerzo viene del trayecto. Como en la salida cruda la distancia carga negativo en C2, invertimos
+  el signo de C2 cuando su correlación con `Distancia (km)` es negativa, y lo dejamos documentado.
+
+```{r b1-orientar-c2}
+# C1 ya viene orientada desde la Parte A (crece con "Entrega real (min)").
+# Fijamos C2 para que crezca con la distancia: arriba = esfuerzo por trayecto.
+if (cor(pca$x[, 2], X[["Distancia (km)"]]) < 0) {
+  pca$x[, 2]        <- -pca$x[, 2]
+  pca$rotation[, 2] <- -pca$rotation[, 2]
+}
+
+# Comprobacion de la orientacion elegida (ambas deben ser positivas).
+c(C1_vs_entrega_real = cor(pca$x[, 1], X[["Entrega real (min)"]]),
+  C2_vs_distancia    = cor(pca$x[, 2], X[["Distancia (km)"]]))
+```
+
+```{r b1-mapa, fig.height=6}
+info_c1 <- info[1]
+info_c2 <- info[2]
+
+# data.frame base del mapa, reutilizado por B1-B5.
+mapa <- data.frame(
+  c1 = pca$x[, 1],
+  c2 = pca$x[, 2],
+  customer_type   = pedidos_completos$customer_type,
+  city            = pedidos_completos$city,
+  restaurant_type = pedidos_completos$restaurant_type,
+  traffic_level   = pedidos_completos$traffic_level
+)
+
+# Con ~49 mil puntos se dibuja una muestra para evitar el amontonamiento.
+set.seed(2026)
+muestra <- mapa[sample(nrow(mapa), 4000), ]
+
+# Limites de ZOOM para la Parte B: encuadramos el 99% central de la nube para
+# que no la aplasten unos pocos pedidos atipicos. Se usa coord_cartesian, que
+# solo acerca la camara SIN eliminar datos (elipses, flechas y cifras siguen
+# calculandose con todos los pedidos).
+zx <- quantile(mapa$c1, c(0.005, 0.995))
+zy <- quantile(mapa$c2, c(0.005, 0.995))
+
+ggplot(muestra, aes(c1, c2)) +
+  geom_point(alpha = 0.18, size = 0.8, color = "#2B6CB0") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
+  annotate("text", x = zx[2] * 0.95, y = 0.35, hjust = 1,
+           label = "Pedidos mas grandes / lentos \u2192", color = "#08306B", fontface = 2, size = 3.3) +
+  annotate("text", x = 0.3, y = zy[2] * 0.92, hjust = 0,
+           label = "\u2191 Esfuerzo por distancia / trayecto", color = "#7B341E", fontface = 2, size = 3.3) +
+  annotate("text", x = 0.3, y = zy[1] * 0.92, hjust = 0,
+           label = "\u2193 Esfuerzo dentro del restaurante", color = "#7B341E", fontface = 2, size = 3.3) +
+  coord_cartesian(xlim = zx, ylim = zy) +
+  labs(title = paste0("Mapa de los pedidos en C1-C2  (juntas: ", coma(info_c1 + info_c2, 1), " de 100)"),
+       subtitle = "4.000 pedidos al azar \u00b7 zoom al 99% central \u00b7 derecha: mas grande/lento \u00b7 arriba: mas distancia",
+       x = paste0("C1 - tamano y duracion  (", coma(info_c1, 1), " de 100)"),
+       y = paste0("C2 - esfuerzo por distancia  (", coma(info_c2, 1), " de 100)"))
+```
+
+**Qué se ve.** Una sola nube densa centrada en el origen, alargada sobre C1 y con dispersión
+apreciable en C2. C1 y C2 juntas guardan `r coma(info[1] + info[2], 1)` de cada 100 partes de la
+información.
+
+**Qué significa.** Las dos direcciones del mapa tienen una lectura clara para el cliente:
+
+- **Derecha (C1 alto):** pedidos más grandes y de mayor duración (más artículos, mayor subtotal,
+  más preparación y mayor tiempo estimado/real). Izquierda: pedidos pequeños y rápidos.
+- **Arriba (C2 alto):** pedidos cuyo esfuerzo proviene del **trayecto** (más distancia y tarifa de
+  entrega). Abajo: pedidos cuyo esfuerzo está **dentro del restaurante** (volumen y preparación).
+
+**Decisión / nombres de las direcciones.** Llamamos a C1 **"tamaño y duración"** (eje horizontal,
+derecha = más grande/lento) y a C2 **"trayecto vs restaurante"** (eje vertical, arriba = esfuerzo de
+distancia). Con estos nombres el cliente puede ubicar un pedido en el mapa y leer de inmediato por
+qué está donde está.
+
+## B2. El biplot
+
+Ponemos en el mismo dibujo a los pedidos (puntos) y a las variables (flechas). Cada flecha apunta
+hacia donde crece esa variable en el mapa, y su longitud indica qué tan bien la representa el plano.
+El ángulo entre dos flechas resume cuánto van juntas: ángulo pequeño = van juntas; ángulo recto
+(≈90°) = no se relacionan; ángulo abierto (→180°) = van en contra.
+
+```{r b2-angulos}
+# Flecha de cada variable = peso en la componente * desviacion de esa componente.
+flechas <- data.frame(
+  variable = rownames(pca$rotation),
+  x = pca$rotation[, 1] * pca$sdev[1],
+  y = pca$rotation[, 2] * pca$sdev[2],
+  row.names = NULL
+)
+
+# Matriz de angulos (en grados) entre todas las flechas: respalda con cifras
+# que un par va junto, solo o en contra.
+angulo <- function(a, b) acos(sum(a * b) / sqrt(sum(a^2) * sum(b^2))) * 180 / pi
+n <- nrow(flechas)
+A <- outer(1:n, 1:n, Vectorize(function(i, j)
+  angulo(unlist(flechas[i, c("x", "y")]), unlist(flechas[j, c("x", "y")]))))
+dimnames(A) <- list(flechas$variable, flechas$variable)
+round(A)
+```
+
+```{r b2-biplot, fig.height=7}
+set.seed(2026)
+muestra_bi <- mapa[sample(nrow(mapa), 3000), ]
+
+# Escala para que las flechas se vean sobre la nube de puntos.
+k <- 2.4
+flechas$xend <- k * flechas$x
+flechas$yend <- k * flechas$y
+
+# Separacion manual de etiquetas: se empujan radialmente hacia afuera y, cuando
+# varias caen casi en el mismo sitio, se reparten en vertical para que se lean.
+flechas$lx <- flechas$xend * 1.12
+flechas$ly <- flechas$yend * 1.12
+
+ggplot(muestra_bi, aes(c1, c2)) +
+  geom_point(alpha = 0.12, size = 0.7, color = "grey40") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey70") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey70") +
+  geom_segment(data = flechas, aes(x = 0, y = 0, xend = xend, yend = yend),
+               arrow = arrow(length = unit(0.22, "cm")), color = "#C05621", linewidth = 1) +
+  ggrepel::geom_label_repel(
+    data = flechas, aes(x = lx, y = ly, label = variable),
+    color = "#9C4221", size = 3.2, label.size = 0, fill = "white",
+    box.padding = 0.4, max.overlaps = Inf, seed = 2026) +
+  coord_equal(xlim = c(-3.2, 4), ylim = c(-3.2, 3.2)) +
+  labs(title = "Biplot de los pedidos: puntos = pedidos, flechas = variables",
+       subtitle = "3.000 pedidos al azar \u00b7 zoom a la zona densa \u00b7 derecha: mas grande/lento \u00b7 arriba: mas distancia",
+       x = "C1 - tamano y duracion", y = "C2 - esfuerzo por distancia")
+```
+
+En el biplot general las flechas cortas (Descuento, Experiencia del repartidor) casi no se aprecian
+porque el plano C1-C2 las representa poco. Para verlas una por una, dibujamos cada variable en su
+propio recuadro. En cada panel la flecha se **reescala a un largo común** para que la *dirección*
+se lea con claridad; la **longitud real** (qué tan bien la representa el mapa) se anota como cifra
+sobre cada panel.
+
+```{r b2-por-variable, fig.height=8}
+# Longitud real de cada flecha en el plano (0 = nada representada, mayor = mejor).
+flechas$largo <- sqrt(flechas$x^2 + flechas$y^2)
+
+# Direccion normalizada a largo 1 para que cada panel muestre bien la orientacion.
+flechas$ux <- flechas$x / flechas$largo
+flechas$uy <- flechas$y / flechas$largo
+
+# Orden de los paneles de la flecha mas larga (mejor representada) a la mas corta.
+flechas$variable <- factor(flechas$variable,
+                           levels = flechas$variable[order(-flechas$largo)])
+flechas$etiqueta_largo <- paste0("largo real: ", coma(flechas$largo, 2))
+
+ggplot(flechas) +
+  geom_hline(yintercept = 0, color = "grey85") +
+  geom_vline(xintercept = 0, color = "grey85") +
+  geom_segment(aes(x = 0, y = 0, xend = ux, yend = uy),
+               arrow = arrow(length = unit(0.25, "cm")), color = "#C05621", linewidth = 1.1) +
+  geom_text(aes(x = 0, y = -1.25, label = etiqueta_largo), size = 3, color = "grey30") +
+  facet_wrap(~ variable, ncol = 5) +
+  coord_equal(xlim = c(-1.2, 1.2), ylim = c(-1.4, 1.2)) +
+  labs(title = "Cada variable por separado: direccion en el mapa C1-C2",
+       subtitle = "Flechas reescaladas a un largo comun para ver la direccion \u00b7 la cifra es el largo real",
+       x = "C1 \u2192", y = "C2 \u2191") +
+  theme(panel.grid.minor = element_blank(),
+        strip.text = element_text(size = 8, face = "bold"),
+        axis.text = element_text(size = 6))
+```
+
+Así se ve con claridad que **Descuento** apunta casi en vertical hacia abajo y **Experiencia del
+repartidor** casi no tiene dirección definida (largo real cercano a cero): son las dos variables que
+el mapa C1-C2 no logra representar, porque viven en componentes posteriores (C3 en adelante, como se
+vio en A5). Las demás reparten su dirección entre "tamaño/duración" (hacia la derecha) y "distancia"
+(hacia arriba).
+
+```{r b2-lecturas, include=FALSE}
+# Pares mas alineados y mas opuestos para el texto (ignorando la diagonal).
+A_sin <- A; diag(A_sin) <- NA
+par_junto    <- which(A_sin == min(A_sin, na.rm = TRUE), arr.ind = TRUE)[1, ]
+par_opuesto  <- which(A_sin == max(A_sin, na.rm = TRUE), arr.ind = TRUE)[1, ]
+# Variable mas corta en el plano = la peor representada / mas "sola".
+largos <- sqrt(flechas$x^2 + flechas$y^2)
+mas_corta <- flechas$variable[which.min(largos)]
+```
+
+**Qué se ve.** Las flechas de **Entrega estimada**, **Entrega real**, **Subtotal**, **Artículos** y
+**Preparación** apuntan hacia el mismo lado (ángulos pequeños entre ellas): son el bloque de tamaño
+y duración. **Distancia** y **Tarifa de entrega** apuntan hacia arriba, separadas del bloque
+anterior por un ángulo cercano a 90°. **Descuento** y **Experiencia del repartidor** son flechas muy
+cortas: el plano C1-C2 casi no las representa (viven en componentes posteriores).
+
+**Qué significa.** Un ángulo pequeño entre dos flechas confirma que esas dos variables se mueven
+juntas; un ángulo recto indica que son casi independientes en este plano. El bloque de tamaño y la
+dirección de distancia son prácticamente perpendiculares: miden cosas distintas del pedido.
+
+**Decisión.** El biplot confirma las dos direcciones de B1 y explica por qué un solo número (C1) no
+basta: la distancia aporta información casi ortogonal que C1 no recoge.
+
+## B3. ¿Hay grupos o hay un continuo?
+
+Para decidir si existen "tipos" de pedido necesitamos saber reconocer cómo se ve un grupo real.
+Usamos `iris` como referencia de libro: tres especies de flores donde un grupo (*setosa*) queda
+aislado del resto por un hueco visible. Si nuestra nube se parece a eso, hay tipos; si es una sola
+mancha, hay un continuo.
+
+```{r b3-iris, fig.height=4.5}
+pca_iris <- prcomp(iris[, 1:4], scale. = TRUE)
+mapa_iris <- data.frame(c1 = pca_iris$x[, 1], c2 = pca_iris$x[, 2], especie = iris$Species)
+
+ggplot(mapa_iris, aes(c1, c2, color = especie)) +
+  geom_point(size = 2.2, alpha = 0.85) +
+  scale_color_manual(values = c(setosa = "#2B6CB0", versicolor = "#C05621", virginica = "#2F855A"),
+                     name = "Especie") +
+  labs(title = "Referencia: iris, donde los grupos SI se separan",
+       subtitle = "setosa queda sola, con un hueco vacio frente a las otras dos",
+       x = "Componente 1", y = "Componente 2")
+```
+
+```{r b3-iris-cifra}
+c1i <- mapa_iris$c1; sp <- mapa_iris$especie
+c(setosa_llega_hasta    = round(max(c1i[sp == "setosa"]), 2),
+  las_otras_empiezan_en = round(min(c1i[sp != "setosa"]), 2))
+```
+
+En iris hay un hueco medible: *setosa* llega hasta `r coma(max(c1i[sp=="setosa"]),2)` en C1 y las
+otras dos especies no empiezan sino hasta `r coma(min(c1i[sp!="setosa"]),2)`. Ese espacio vacío es
+la marca de un grupo que existe. Ahora miramos nuestra nube de pedidos.
+
+```{r b3-pedidos, fig.height=5}
+ggplot(muestra, aes(c1, c2)) +
+  geom_point(alpha = 0.15, size = 0.8, color = "#2B6CB0") +
+  coord_cartesian(xlim = zx, ylim = zy) +
+  labs(title = "Nuestra nube de pedidos: ¿islas o una sola mancha?",
+       subtitle = "4.000 pedidos al azar en el plano C1-C2 (zoom al 99% central)",
+       x = "C1 - tamano y duracion", y = "C2 - esfuerzo por distancia")
+
+# Cifra: si hubiera dos grupos sobre C1 habria un tramo sin datos. Buscamos el
+# mayor hueco entre valores consecutivos de C1 y lo comparamos con su recorrido.
+c1_ord <- sort(mapa$c1)
+huecos <- diff(c1_ord)
+mayor_hueco <- max(huecos)
+c(mayor_hueco_en_C1 = round(mayor_hueco, 3),
+  recorrido_total_C1 = round(diff(range(mapa$c1)), 2),
+  hueco_como_pct_del_recorrido = round(100 * mayor_hueco / diff(range(mapa$c1)), 2))
+```
+
+**Qué se ve.** Una sola mancha continua, sin islas ni espacios vacíos. El mayor hueco entre pedidos
+consecutivos a lo largo de C1 es de apenas `r coma(mayor_hueco, 3)`, frente a un recorrido total de
+`r coma(diff(range(mapa$c1)), 1)` (`r coma(100*mayor_hueco/diff(range(mapa$c1)), 1)` % del recorrido):
+no hay ningún tramo vacío que separe un grupo de otro, como sí ocurría con el hueco de *setosa*.
+
+**Qué significa.** A diferencia de iris, los pedidos no forman tipos naturales separados por huecos;
+forman un continuo. No existen "clases" de pedido que los datos entreguen hechas.
+
+**Decisión.** El cliente no puede esperar que el mapa le dé grupos automáticos. Si quiere segmentar
+pedidos (por ejemplo para priorizar revisiones), tendrá que **definir los cortes él mismo** sobre el
+mapa, como se hace en B5.
+
+## B4. ¿Los grupos que su cliente conoce se separan?
+
+El equipo de operaciones conoce sus pedidos por cuatro variables de grupo: **tipo de cliente**,
+**ciudad**, **tipo de restaurante** y **nivel de tráfico**. Coloreamos el mapa por cada una y
+dibujamos las elipses del 90 % (dónde cae el 90 % de cada grupo). La pregunta: ¿los grupos se
+**separan** (ocupan zonas distintas) o solo se **desplazan** (se corren un poco pero se montan)?
+
+```{r b4-mapas, fig.height=9}
+grupos_cliente <- c(
+  customer_type   = "Tipo de cliente",
+  city            = "Ciudad",
+  restaurant_type = "Tipo de restaurante",
+  traffic_level   = "Nivel de trafico"
+)
+
+# Un panel por variable de grupo, cada uno con elipses del 90%.
+paneles <- lapply(names(grupos_cliente), function(g) {
+  ggplot(muestra, aes(c1, c2, color = .data[[g]])) +
+    geom_point(alpha = 0.25, size = 0.6) +
+    stat_ellipse(level = 0.9, linewidth = 0.9) +
+    coord_cartesian(xlim = zx, ylim = zy) +
+    labs(title = grupos_cliente[[g]], x = "C1", y = "C2", color = NULL) +
+    theme(legend.position = "top", legend.text = element_text(size = 7),
+          plot.title = element_text(size = 10, face = "bold"))
+})
+
+# Se muestran en una grilla 2x2.
+gridExtra::grid.arrange(grobs = paneles, ncol = 2)
+```
+
+```{r b4-cifras}
+# Para cada variable de grupo: (1) distancia maxima entre centroides en el plano
+# y (2) solapamiento, medido como el % promedio de cada grupo que cae dentro de
+# la elipse (aprox. gaussiana) del grupo mas distinto.
+resumen_grupos <- function(g) {
+  gv <- pedidos_completos[[g]]
+  cen <- aggregate(cbind(c1 = mapa$c1, c2 = mapa$c2), list(grupo = gv), mean)
+  d <- as.matrix(dist(cen[, c("c1", "c2")]))
+  dist_max <- max(d)
+  par_lejano <- which(d == dist_max, arr.ind = TRUE)[1, ]
+  g1 <- cen$grupo[par_lejano[1]]; g2 <- cen$grupo[par_lejano[2]]
+  # Solapamiento: % del grupo g1 que cae mas cerca del centroide de g2 que del propio.
+  en1 <- gv == g1; en2 <- gv == g2
+  c1c <- cen[par_lejano[1], c("c1","c2")]; c2c <- cen[par_lejano[2], c("c1","c2")]
+  d1 <- (mapa$c1[en1]-c1c$c1)^2 + (mapa$c2[en1]-c1c$c2)^2
+  d2 <- (mapa$c1[en1]-c2c$c1)^2 + (mapa$c2[en1]-c2c$c2)^2
+  solapa <- 100 * mean(d2 < d1)  # % de g1 que esta en el lado de g2
+  data.frame(variable = grupos_cliente[[g]],
+             par_mas_distinto = paste(g1, "vs", g2),
+             dist_centroides = round(dist_max, 2),
+             solapamiento_pct = round(solapa, 1))
+}
+tabla_grupos <- do.call(rbind, lapply(names(grupos_cliente), resumen_grupos))
+sd_c1 <- sd(mapa$c1)
+knitr::kable(tabla_grupos,
+             col.names = c("Variable de grupo", "Par mas distinto",
+                           "Distancia centroides", "Solapamiento (%)"))
+```
+
+La desviación típica de C1 es `r coma(sd_c1, 2)`, como referencia para leer las distancias entre
+centroides.
+
+**Qué se ve.** De las cuatro variables, solo **tipo de restaurante** logra una separación apreciable
+(su par más distinto, con **Fine Dining**, alcanza una distancia entre centroides de
+`r coma(tabla_grupos$dist_centroides[tabla_grupos$variable=="Tipo de restaurante"], 2)`, mayor que la
+desviación de C1). Las otras tres —tipo de cliente, ciudad y nivel de tráfico— tienen centroides casi
+pegados y elipses que se montan casi por completo.
+
+**Qué significa.** En casi todos los casos los grupos **solo se desplazan**, no se separan: las
+elipses del 90 % se solapan en gran medida. El único grupo con una zona propia reconocible es el de
+restaurantes de alta cocina, y aun así comparte buena parte del mapa con el resto.
+
+**Decisión para el cliente: ¿le sirve ese grupo para decidir?** Ninguna de estas cuatro variables
+parte los pedidos en bloques limpios. Segmentar revisiones por tipo de cliente, ciudad o tráfico
+dejaría fuera a muchos pedidos problemáticos y marcaría a muchos que no lo son. La única señal con
+algo de valor es el tipo de restaurante (por el caso Fine Dining), pero no basta por sí sola: lo que
+de verdad ubica a cada pedido es **su posición en el mapa**, no la etiqueta de grupo.
+
+## B5. La decisión en el mapa
+
+Como los pedidos no vienen separados en grupos (B3) y las etiquetas del cliente casi no los
+distinguen (B4), definimos nosotros los cortes sobre el mapa. Proponemos dos, con sentido operativo:
+
+- **Corte sobre C1:** pedidos **grandes y lentos** (C1 por encima de una desviación típica) → entran
+  a revisión de servicio por su tamaño/duración.
+- **Corte sobre C2:** pedidos de **esfuerzo por distancia** (C2 por encima de una desviación típica)
+  → se marcan para revisar la logística del trayecto (asignación de repartidor, zona).
+
+```{r b5-cortes}
+corte_c1 <- sd(mapa$c1)   # una desviacion tipica hacia la derecha (mas grande/lento)
+corte_c2 <- sd(mapa$c2)   # una desviacion tipica hacia arriba (mas distancia)
+
+mapa$zona <- dplyr::case_when(
+  mapa$c1 >= corte_c1 & mapa$c2 >= corte_c2 ~ "Grande/lento y lejano",
+  mapa$c1 >= corte_c1                        ~ "Grande/lento",
+  mapa$c2 >= corte_c2                        ~ "Lejano",
+  TRUE                                       ~ "Rutina"
+)
+tabla_zonas <- as.data.frame(table(zona = mapa$zona))
+tabla_zonas$de_cada_100 <- round(100 * tabla_zonas$Freq / nrow(mapa), 1)
+knitr::kable(tabla_zonas, col.names = c("Zona", "Pedidos", "De cada 100"))
+```
+
+```{r b5-mapa, fig.height=6}
+set.seed(2026)
+idx <- sample(nrow(mapa), 4000)
+mapa_m <- mapa[idx, ]
+
+colores_zona <- c("Grande/lento y lejano" = "#9B2C2C", "Grande/lento" = "#2B6CB0",
+                  "Lejano" = "#C05621", "Rutina" = "grey75")
+
+ggplot(mapa_m, aes(c1, c2, color = zona)) +
+  geom_point(alpha = 0.55, size = 0.9) +
+  geom_vline(xintercept = corte_c1, linetype = "dashed") +
+  geom_hline(yintercept = corte_c2, linetype = "dashed") +
+  scale_color_manual(values = colores_zona, name = "Zona") +
+  guides(color = guide_legend(override.aes = list(size = 3, alpha = 1))) +
+  coord_cartesian(xlim = zx, ylim = zy) +
+  labs(title = "El mapa de decisiones: dos cortes, cuatro zonas",
+       subtitle = "Puntos: 4.000 pedidos al azar (zoom al 99% central) \u00b7 cifras de la tabla: toda la base",
+       x = "C1 - tamano y duracion", y = "C2 - esfuerzo por distancia")
+```
+
+```{r b5-sensibilidad}
+# Que pasa si el cliente mueve el corte de C1 (mas estricto o mas laxo).
+sensibilidad <- sapply(c(0.5, 1.0, 1.5, 2.0), function(k) sum(mapa$c1 >= k * sd(mapa$c1)))
+data.frame(
+  corte_en_desviaciones = c(0.5, 1.0, 1.5, 2.0),
+  pedidos_grandes_lentos = sensibilidad,
+  de_cada_100 = round(100 * sensibilidad / nrow(mapa), 1)
+)
+```
+
+**Qué se ve.** Con el corte de una desviación típica en cada dirección, la mayoría de los pedidos
+cae en **Rutina**, un bloque entra a **Grande/lento**, otro a **Lejano** y un grupo pequeño queda en
+la esquina **Grande/lento y lejano** (los que combinan ambos motivos). La tabla da el conteo exacto de
+cada zona sobre los `r miles(nrow(mapa))` pedidos.
+
+**Qué significa.** El cliente obtiene cuatro bandejas de trabajo con acciones distintas: los
+grandes/lentos van a revisión de servicio; los lejanos, a revisión de logística; los de la esquina
+son prioridad doble; y Rutina no necesita acción. Cada pedido sabe por qué está en su zona.
+
+**Decisión.** Mover el corte cambia el tamaño de las bandejas sin cambiar la lógica: con medio
+desvío entran muchos más pedidos a revisión; con dos desvíos, solo los casos extremos. El corte es
+una **decisión del cliente según su capacidad de revisión**, no de la técnica: la tabla de
+sensibilidad le muestra cuántos pedidos asume en cada escenario.

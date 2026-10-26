@@ -1,6 +1,6 @@
 ---
-title: "Taller: ¿un indicador o varios?"
-subtitle: "PCA y one-hot encoding en el dataset de FoodDelivery"
+title: "Taller de componentes principales: el resumen y el mapa para su cliente"
+subtitle: "PCA en el dataset de FoodDelivery"
 author: "Edward Julian García, Daniel Alejandro Presiga, Nicolás Andres Yepes"
 date: "`r format(Sys.Date(), '%d de %B de %Y')`"
 output:

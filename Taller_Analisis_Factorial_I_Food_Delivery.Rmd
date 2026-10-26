@@ -1,0 +1,254 @@
+---
+title: "Taller: ¿una habilidad o varias?"
+subtitle: "Análisis factorial en el dataset de FoodDelivery"
+author: "Edward García, Daniel Presiga, Nicolás Yepes"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: cosmo
+    code_folding: show
+    df_print: paged
+    fig_width: 9
+    fig_height: 5.5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.align = "center", fig.width = 9, fig.height = 5.5)
+
+suppressPackageStartupMessages({
+  library(psych)
+  library(ggplot2)
+})
+
+coma <- function(x, d = 1) {
+  formatC(x, format = "f", digits = d, decimal.mark = ",", big.mark = ".")
+}
+miles <- function(x) formatC(x, format = "d", decimal.mark = ",", big.mark = ".")
+```
+
+# El encargo y las variables
+
+El cliente es el equipo de operaciones de la plataforma de domicilios. En el taller anterior vimos
+que el tiempo real de entrega se mueve junto con varias medidas del pedido. La pregunta de hoy es
+distinta: **¿detrás de esas medidas hay una sola "habilidad" (un factor común) que las explique, o
+hace falta más de una?** Si bastara una, el cliente podría resumir el esfuerzo de un pedido en un
+único indicador; si hacen falta dos, necesita dos tableros separados.
+
+Un **factor** es una variable que no se mide directamente pero que, si existe, explicaría por qué
+varias medidas se mueven juntas. El análisis factorial parte cada variable en dos: la **parte común**
+(lo que comparte con las demás a través del factor) y la **parte propia** (lo que es exclusivo de esa
+variable y no comparte con ninguna otra). En el lenguaje del método, a la parte común se le llama
+*comunalidad* y a la propia, *unicidad*; aquí las nombramos en palabras para el cliente.
+
+Escogemos siete variables numéricas que, por su naturaleza, podrían compartir una idea de "esfuerzo
+del pedido": cantidad de artículos, subtotal, tarifa de entrega, distancia, tiempo de preparación,
+tiempo estimado de entrega y tiempo real de entrega.
+
+```{r datos}
+pedidos <- read.csv("dataset/food_delivery_orders_dataset.csv",
+                    stringsAsFactors = FALSE, na.strings = c("", "NA"))
+
+variables_fa <- c(
+  "items_count", "subtotal", "delivery_fee", "distance_km",
+  "restaurant_preparation_time_minutes",
+  "estimated_delivery_time_minutes", "actual_delivery_time_minutes"
+)
+etiquetas <- c(
+  items_count = "Articulos", subtotal = "Subtotal", delivery_fee = "Tarifa entrega",
+  distance_km = "Distancia (km)", restaurant_preparation_time_minutes = "Preparacion (min)",
+  estimated_delivery_time_minutes = "Entrega estimada (min)",
+  actual_delivery_time_minutes = "Entrega real (min)"
+)
+
+# Solo pedidos completados y con las siete medidas presentes.
+X <- pedidos[pedidos$order_status == "Completed" &
+             complete.cases(pedidos[, variables_fa]), variables_fa]
+names(X) <- etiquetas[names(X)]
+
+c(pedidos_analizados = nrow(X), variables = ncol(X))
+```
+
+Trabajamos con `r miles(nrow(X))` pedidos completados y `r ncol(X)` variables.
+
+# ¿Vale la pena buscar factores? La prueba KMO
+
+Antes de buscar un factor conviene preguntarse si las variables comparten suficiente como para que
+tenga sentido. La medida **KMO** (Kaiser-Meyer-Olkin) responde eso con un número entre 0 y 1: cerca
+de 1, las variables comparten mucho y buscar un factor tiene sentido; cerca de 0, cada una va por su
+lado y un factor común sería forzado. Una regla práctica: por debajo de 0,5 es insuficiente; entre
+0,6 y 0,7 es aceptable; por encima de 0,8 es bueno.
+
+```{r kmo}
+kmo <- KMO(X)
+kmo$MSA                      # KMO global
+round(kmo$MSAi, 3)           # KMO de cada variable
+```
+
+**Qué se ve.** El KMO global es `r coma(kmo$MSA, 3)`. Por variable, la tarifa de entrega y los
+artículos tienen los valores más altos, mientras que el subtotal es el más bajo
+(`r coma(min(kmo$MSAi), 3)`).
+
+**Qué significa.** Un KMO de `r coma(kmo$MSA, 3)` cae en la zona aceptable: las variables comparten
+lo suficiente como para que buscar un factor común tenga sentido, aunque sin ser un caso de libro.
+
+**Decisión.** Seguimos adelante con el análisis factorial, pero con la expectativa calibrada: un solo
+factor podría no capturar todo lo que estas siete variables tienen en común.
+
+# Una sola habilidad: parte común y parte propia
+
+Corremos el análisis factorial pidiendo **un** factor, estimado por máxima verosimilitud
+(`fm = "ml"`, un criterio estándar para ajustar el modelo). La **carga** de cada variable es qué tan
+fuerte se conecta con el factor; la **parte común** es la porción de su variación que el factor
+explica, y la **parte propia** es la que queda sin explicar (exclusiva de esa variable).
+
+```{r fa1}
+fa1 <- fa(X, nfactors = 1, fm = "ml")
+
+# Carga, parte comun (comunalidad) y parte propia (unicidad) de cada variable.
+tabla1 <- data.frame(
+  variable  = rownames(fa1$loadings),
+  carga     = round(fa1$loadings[, 1], 3),
+  comun     = round(fa1$communality, 3),
+  propia    = round(fa1$uniquenesses, 3),
+  row.names = NULL
+)
+knitr::kable(tabla1, col.names = c("Variable", "Carga", "Parte comun", "Parte propia"))
+```
+
+```{r fa1-grafico, fig.height=5}
+orden <- order(tabla1$comun)
+tabla1_ord <- tabla1[orden, ]
+
+d <- rbind(
+  data.frame(variable = tabla1_ord$variable, parte = "Comun (compartida)", valor = tabla1_ord$comun),
+  data.frame(variable = tabla1_ord$variable, parte = "Propia (exclusiva)", valor = tabla1_ord$propia)
+)
+d$variable <- factor(d$variable, levels = tabla1_ord$variable)
+
+ggplot(d, aes(x = variable, y = valor, fill = parte)) +
+  geom_col(width = 0.7) +
+  coord_flip() +
+  scale_fill_manual(values = c("Comun (compartida)" = "#2B6CB0", "Propia (exclusiva)" = "#C05621"),
+                    name = NULL) +
+  scale_y_continuous(labels = function(x) coma(x, 1)) +
+  labs(title = "Parte comun y parte propia de cada variable (un factor)",
+       subtitle = "Azul: lo que el factor comun explica \u00b7 naranja: lo exclusivo de cada variable",
+       x = NULL, y = "Proporcion de la variacion de la variable") +
+  theme(legend.position = "top")
+```
+
+```{r fa1-lecturas, include=FALSE}
+mas_propia <- tabla1$variable[which.max(tabla1$propia)]
+mas_comun  <- tabla1$variable[which.max(tabla1$comun)]
+```
+
+**Qué se ve.** El factor explica casi toda la variación de **Entrega estimada** y **Entrega real**
+(barras azules largas) y buena parte de **Distancia**. En cambio, **`r mas_propia`** es casi toda
+parte propia: su barra naranja domina. Los artículos, el subtotal y la preparación también quedan
+mayormente en su parte propia.
+
+**Qué significa para el cliente.** La variable **`r mas_propia`** casi no comparte nada con el factor
+común: lo que la mueve es algo exclusivo suyo, no la "habilidad" general que conecta a las demás. En
+términos del negocio, la tarifa de entrega responde a una lógica propia (política de cobro) que no se
+explica por el mismo patrón que agrupa los tiempos y la distancia. Un solo factor la deja casi
+afuera.
+
+**Decisión.** Un único factor describe bien el eje de tiempos/distancia, pero ignora a varias
+variables. Hay que comprobar si ese factor alcanza para explicar cómo se relacionan todas entre sí.
+
+# ¿Una sola habilidad alcanza?
+
+Si un factor bastara, debería poder **reconstruir** las correlaciones entre variables: la correlación
+entre dos variables tendría que parecerse al **producto de sus cargas**. Comparamos la correlación
+observada con ese producto; si se parecen, un factor explica la relación; si no, falta algo.
+
+```{r fa1-reproduce}
+L <- fa1$loadings[, 1]
+reproducida <- outer(L, L)          # carga_i * carga_j
+observada   <- cor(X)
+
+pares <- t(combn(colnames(X), 2))
+comparacion <- data.frame(
+  variable_1 = pares[, 1],
+  variable_2 = pares[, 2],
+  observada  = round(observada[pares], 2),
+  por_el_factor = round(reproducida[pares], 2)
+)
+comparacion$diferencia <- round(abs(comparacion$observada - comparacion$por_el_factor), 2)
+comparacion <- comparacion[order(-comparacion$diferencia), ]
+knitr::kable(head(comparacion, 8), row.names = FALSE,
+             col.names = c("Variable 1", "Variable 2", "Correlacion observada",
+                           "Predicha por el factor", "Diferencia"))
+```
+
+```{r fa1-maxerror, include=FALSE}
+err <- abs(observada - reproducida); diag(err) <- NA
+max_err <- max(err, na.rm = TRUE)
+```
+
+**Qué se ve.** En varios pares la correlación observada y la predicha por un factor no se parecen.
+El desajuste más grande llega a `r coma(max_err, 2)`: por ejemplo, Artículos y Subtotal están
+correlacionados de verdad en `r coma(observada["Articulos","Subtotal"], 2)`, pero un solo factor
+predice apenas `r coma(reproducida["Articulos","Subtotal"], 2)`.
+
+**Qué significa.** Un único factor **no** reproduce las relaciones entre todas las variables. Deja
+sin explicar, sobre todo, el bloque del tamaño del pedido (artículos, subtotal, preparación), que se
+mueve junto por razones distintas a las del bloque de distancia y tiempos.
+
+**Decisión.** Una sola habilidad no alcanza. Probamos con dos factores para ver si aparecen dos ideas
+distintas y con sentido.
+
+# Dos habilidades: ¿tienen sentido?
+
+Pedimos **dos** factores con una rotación oblicua (`oblimin`), que permite que los dos factores estén
+relacionados entre sí —algo razonable, porque un pedido grande y uno lejano no son mundos aparte—.
+La rotación solo reparte la carga para que cada factor se lea mejor; no inventa información.
+
+```{r fa2}
+fa2 <- fa(X, nfactors = 2, fm = "ml", rotate = "oblimin")
+round(fa2$loadings[, 1:2], 3)
+```
+
+```{r fa2-grafico, fig.height=5}
+carga2 <- as.data.frame(unclass(fa2$loadings[, 1:2]))
+carga2$variable <- rownames(carga2)
+names(carga2)[1:2] <- c("Factor_A", "Factor_B")
+
+ggplot(carga2, aes(Factor_A, Factor_B, label = variable)) +
+  geom_hline(yintercept = 0, color = "grey70") +
+  geom_vline(xintercept = 0, color = "grey70") +
+  geom_point(color = "#2B6CB0", size = 2.5) +
+  ggrepel::geom_text_repel(size = 3.3, seed = 2026) +
+  coord_equal() +
+  labs(title = "Las dos habilidades: donde carga cada variable",
+       subtitle = "Factor A: distancia y tiempos \u00b7 Factor B: tamano del pedido",
+       x = "Factor A (distancia / logistica)", y = "Factor B (tamano del pedido)")
+```
+
+```{r fa2-lecturas, include=FALSE}
+vexp <- fa2$Vaccounted
+cum2 <- vexp["Cumulative Var", 2]
+```
+
+**Qué se ve.** Con dos factores las variables se reparten limpio en dos grupos:
+
+- **Factor A — distancia y logística:** cargan fuerte Distancia, Entrega estimada, Entrega real y, en
+  menor medida, Tarifa de entrega.
+- **Factor B — tamaño del pedido:** cargan fuerte Subtotal, Artículos y Preparación.
+
+Juntos explican `r coma(100*cum2, 1)` de cada 100 partes de la variación común.
+
+**Qué significa.** La segunda habilidad **sí tiene sentido propio**: no es una sola variable
+disfrazada, sino un grupo coherente (el tamaño del pedido: cuántos artículos, cuánto cuesta, cuánto
+tarda en prepararse) que se distingue del esfuerzo de llevarlo lejos. Son dos ideas distintas del
+negocio: **qué tan grande es el pedido** y **qué tan lejos/largo es llevarlo**.
+
+**Decisión para el cliente.** El esfuerzo de un pedido no se resume en una sola habilidad: hacen
+falta dos tableros, uno de **tamaño** y otro de **logística/distancia**. La tarifa de entrega queda
+parcialmente ligada a la logística pero conserva mucha parte propia, así que conviene seguirla
+también por separado. Reportar un único número escondería que un pedido puede ser exigente por
+tamaño, por distancia, o por ambas cosas a la vez.
