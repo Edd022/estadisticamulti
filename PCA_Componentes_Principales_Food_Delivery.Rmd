@@ -1,7 +1,7 @@
 ---
-title: "Componentes principales II: estandarización y one-hot encoding"
+title: "Componentes principales"
 subtitle: "PCA sobre todas las variables del dataset de FoodDelivery"
-author: "Edward García, Daniel Presiga, Nicolás Yepes"
+author: "Edward Julian García, Daniel Alejandro Presiga, Nicolás Andrés Yepes"
 date: "`r format(Sys.Date(), '%d de %B de %Y')`"
 output:
   html_document:

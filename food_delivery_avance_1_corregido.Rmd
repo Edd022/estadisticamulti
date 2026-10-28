@@ -4,8 +4,12 @@ date: "2026-10-19"
 output:
   html_document:
     toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
     toc_depth: 3
     number_sections: false
+    theme: cosmo
 ---
 
 ## Integrantes
@@ -28,9 +32,10 @@ Las correcciones que se incorporan son:
    categoricas como `factor`, binarias como `factor` y variables temporales a fecha.
 2. Separar de forma explicita los pedidos completados de los cancelados, dejando claro
    que el analisis multivariante posterior usara solo los pedidos completados.
-3. Tratar los valores atipicos con una decision tomada variable por variable.
+3. Tratar los valores atipicos con una decision explicita: conservarlos y marcarlos (sin eliminar
+   ni recortar), porque son pedidos reales que importan para el analisis posterior.
 4. Mantener el analisis univariado y bivariado, pero corriendo sobre el dataframe
-   preparado y con los tipos correctos.
+   preparado y con los tipos correctos, con una lectura orientada al negocio.
 
 No se aplica estandarizacion (`scale()`) en este documento: esa fase corresponde al
 avance 2.
@@ -169,22 +174,216 @@ data.frame(
      Se iran llenando uno a uno siguiendo la metodologia de trabajo.
      ===================================================================== -->
 
-# 3. Tratamiento de valores atipicos (PENDIENTE)
+# 3. Tratamiento de valores atipicos
 
-En esta seccion se decidira, variable por variable, que hacer con los valores atipicos
-detectados en el avance 1 (conservar, winsorizar o marcar). Se incluira una tabla resumen
-con la recomendacion por variable antes de aplicar cualquier cambio.
+En el avance 1 se detectaron valores atipicos en casi todas las variables numericas. Aqui tomamos
+una decision explicita sobre que hacer con ellos. Para medir cuantos hay usamos la regla del rango
+intercuartilico (IQR): se considera atipico todo valor por debajo de `Q1 - 1,5*IQR` o por encima de
+`Q3 + 1,5*IQR`.
 
-# 4. Analisis univariado corregido (PENDIENTE)
+```{r outliers-conteo}
+# Conteo de atipicos por variable (solo sobre pedidos completados).
+resumen_outliers <- function(v) {
+  x <- Comida_completados[[v]]
+  x <- x[!is.na(x)]
+  q1 <- quantile(x, 0.25); q3 <- quantile(x, 0.75); iqr <- q3 - q1
+  li <- q1 - 1.5 * iqr; ls <- q3 + 1.5 * iqr
+  n_out <- sum(x < li | x > ls)
+  data.frame(variable = v,
+             limite_inferior = round(li, 2),
+             limite_superior = round(ls, 2),
+             n_atipicos = n_out,
+             pct_atipicos = round(100 * n_out / length(x), 2))
+}
+tabla_outliers <- do.call(rbind, lapply(variables_numericas, resumen_outliers))
+tabla_outliers <- tabla_outliers[order(-tabla_outliers$pct_atipicos), ]
+knitr::kable(tabla_outliers, row.names = FALSE,
+             col.names = c("Variable", "Limite inf.", "Limite sup.",
+                           "N atipicos", "% atipicos"))
+```
 
-Se retomara el analisis univariado del avance 1, pero corriendo sobre `Comida_completados`
-y con los tipos ya convertidos (factores y fechas).
+**Decision: conservar y marcar, no eliminar ni recortar.** En este dataset los valores atipicos no
+son errores de medicion: son pedidos reales (propinas generosas, pedidos grandes de valor alto,
+entregas a larga distancia). Eliminarlos o recortarlos (winsorizar) borraria informacion valida y
+distorsionaria el PCA posterior, que justamente busca las direcciones de mayor variacion. Por eso la
+politica es:
 
-# 5. Analisis bivariado corregido (PENDIENTE)
+- **Conservar** todos los registros (no se borra ninguna fila).
+- **Marcar** cada pedido atipico con una bandera por variable, para poder filtrarlos o revisarlos
+  cuando convenga sin alterar los datos originales.
 
-Se retomaran las relaciones bivariadas del avance 1 sobre el dataframe preparado.
+```{r outliers-marcar}
+# Se crea una bandera TRUE/FALSE por cada variable numerica, sin modificar los valores.
+marcar_atipicos <- function(x) {
+  q1 <- quantile(x, 0.25, na.rm = TRUE); q3 <- quantile(x, 0.75, na.rm = TRUE)
+  iqr <- q3 - q1
+  x < (q1 - 1.5 * iqr) | x > (q3 + 1.5 * iqr)
+}
+banderas <- as.data.frame(lapply(Comida_completados[, variables_numericas], marcar_atipicos))
+names(banderas) <- paste0("atipico_", variables_numericas)
 
-# 6. Cierre y paso al avance 2 (PENDIENTE)
+# Numero de variables en las que cada pedido es atipico (0 = pedido "normal").
+Comida_completados$n_atipicos <- rowSums(banderas, na.rm = TRUE)
 
-Se dejara el dataframe `Comida_completados` listo como insumo para la estandarizacion
-(z-score) y el PCA del avance 2.
+# Cuantos pedidos no tienen ningun valor atipico y cuantos tienen al menos uno.
+tabla_resumen_atipicos <- data.frame(
+  grupo = c("Sin ningun atipico", "Con al menos un atipico"),
+  pedidos = c(sum(Comida_completados$n_atipicos == 0),
+              sum(Comida_completados$n_atipicos > 0))
+)
+tabla_resumen_atipicos$porcentaje <- round(
+  100 * tabla_resumen_atipicos$pedidos / nrow(Comida_completados), 1)
+knitr::kable(tabla_resumen_atipicos,
+             col.names = c("Grupo", "Pedidos", "Porcentaje"))
+```
+
+Asi el dataframe queda enriquecido con la informacion de atipicos (columna `n_atipicos`) sin perder
+ni alterar ningun dato, listo para el analisis multivariante del avance 2.
+
+# 4. Analisis univariado corregido
+
+Retomamos el analisis univariado, ahora sobre `Comida_completados` y con los tipos ya convertidos.
+En lugar de repetir el detalle variable por variable del avance 1, presentamos una vista de impacto:
+un resumen estadistico compacto de todas las numericas y los graficos de las variables mas
+relevantes para el negocio.
+
+## 4.1 Resumen de las variables numericas
+
+```{r univar-resumen}
+resumen_num <- function(v) {
+  x <- Comida_completados[[v]]
+  data.frame(variable = v,
+             media = round(mean(x, na.rm = TRUE), 2),
+             sd = round(sd(x, na.rm = TRUE), 2),
+             min = round(min(x, na.rm = TRUE), 2),
+             mediana = round(median(x, na.rm = TRUE), 2),
+             max = round(max(x, na.rm = TRUE), 2))
+}
+tabla_univar <- do.call(rbind, lapply(variables_numericas, resumen_num))
+knitr::kable(tabla_univar, row.names = FALSE,
+             col.names = c("Variable", "Media", "Desv.", "Min", "Mediana", "Max"))
+```
+
+**Qué se ve.** Las variables viven en escalas muy distintas: desde calificaciones de 1 a 5 hasta
+totales de pedido que llegan a cientos de dolares. **Qué significa.** Esa diferencia de escala es la
+razon por la que el avance 2 debera estandarizar antes del PCA. **Decisión.** El resumen confirma que
+los datos estan limpios (sin NA en completados) y listos para el analisis.
+
+## 4.2 Variables clave: la objetivo y sus acompañantes
+
+Graficamos la variable objetivo (`actual_delivery_time_minutes`) y las tres medidas mas ligadas al
+tiempo de entrega, por su peso en el negocio.
+
+```{r univar-graficos, fig.height=6}
+op <- par(no.readonly = TRUE)
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+hist(Comida_completados$actual_delivery_time_minutes, breaks = 40, col = "#2B6CB0",
+     border = "white", main = "Tiempo real de entrega", xlab = "Minutos", ylab = "Frecuencia")
+hist(Comida_completados$estimated_delivery_time_minutes, breaks = 40, col = "#4299E1",
+     border = "white", main = "Tiempo estimado de entrega", xlab = "Minutos", ylab = "Frecuencia")
+hist(Comida_completados$distance_km, breaks = 40, col = "#C05621",
+     border = "white", main = "Distancia de entrega", xlab = "Kilometros", ylab = "Frecuencia")
+hist(Comida_completados$order_total, breaks = 40, col = "#2F855A",
+     border = "white", main = "Total del pedido", xlab = "Dolares", ylab = "Frecuencia")
+par(op)
+```
+
+**Qué se ve.** Las cuatro distribuciones tienen sesgo a la derecha: la mayoria de pedidos son
+rapidos, cercanos y de monto moderado, con una cola de pedidos lentos, lejanos o caros.
+**Qué significa.** El comportamiento tipico del servicio es homogeneo, pero existe una minoria de
+pedidos exigentes que estira las colas (los mismos que marcamos como atipicos en la seccion 3).
+**Decisión.** Esa cola es justamente la que interesa vigilar; por eso se conserva y se marca, no se
+elimina.
+
+## 4.3 Variables categoricas
+
+Aprovechando que ya son factores, revisamos la distribucion de las categoricas de mayor peso para el
+negocio.
+
+```{r univar-categoricas, fig.height=6}
+op <- par(no.readonly = TRUE)
+par(mfrow = c(2, 2), mar = c(6, 4, 3, 1))
+barplot(table(Comida_completados$city), col = "#2B6CB0", border = "white",
+        main = "Pedidos por ciudad", las = 2, ylab = "Frecuencia")
+barplot(table(Comida_completados$restaurant_type), col = "#C05621", border = "white",
+        main = "Tipo de restaurante", las = 2, ylab = "Frecuencia")
+barplot(table(Comida_completados$traffic_level), col = "#2F855A", border = "white",
+        main = "Nivel de trafico", las = 2, ylab = "Frecuencia")
+barplot(table(Comida_completados$late_delivery), col = "#9B2C2C", border = "white",
+        main = "Entrega tardia", las = 2, ylab = "Frecuencia")
+par(op)
+```
+
+**Qué se ve.** Los pedidos se concentran en pocas ciudades y en restaurantes de comida rapida; el
+trafico medio es el mas frecuente y una fraccion relevante de pedidos llega tarde. **Qué significa.**
+El contexto operativo no es uniforme: hay condiciones (ciudad, trafico) que podrian relacionarse con
+los retrasos. **Decisión.** Estas variables quedan como candidatas naturales para las pruebas de
+hipotesis posteriores (por ejemplo, si el tiempo de entrega difiere segun el nivel de trafico).
+
+# 5. Analisis bivariado corregido
+
+Revisamos como se relaciona la variable objetivo con las medidas mas influyentes, sobre el dataframe
+preparado.
+
+## 5.1 Relaciones entre numericas y el tiempo de entrega
+
+```{r bivar-correlacion, fig.height=5}
+num_clave <- c("actual_delivery_time_minutes", "estimated_delivery_time_minutes",
+               "distance_km", "restaurant_preparation_time_minutes",
+               "order_total", "items_count")
+mat <- cor(Comida_completados[, num_clave], use = "complete.obs")
+knitr::kable(round(mat, 2))
+
+# Correlacion de cada variable con el tiempo real de entrega.
+cor_objetivo <- sort(mat["actual_delivery_time_minutes", ], decreasing = TRUE)
+round(cor_objetivo, 3)
+```
+
+**Qué se ve.** El tiempo real de entrega se relaciona sobre todo con el tiempo estimado y con la
+distancia; el monto del pedido y la cantidad de articulos pesan mucho menos. **Qué significa.** Lo
+que mas acompana al tiempo de entrega es la planeacion (tiempo estimado) y la geografia (distancia),
+no cuanto se gasta el cliente. **Decisión.** Estas seran las relaciones a confirmar formalmente con
+pruebas de hipotesis y modelos en las siguientes etapas.
+
+## 5.2 El tiempo de entrega segun el contexto categorico
+
+```{r bivar-categorico, fig.height=5}
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 2), mar = c(5, 4, 3, 1))
+boxplot(actual_delivery_time_minutes ~ traffic_level, data = Comida_completados,
+        col = c("#b7e1cd", "#fce5cd", "#f4cccc"),
+        main = "Tiempo real segun trafico", xlab = "Nivel de trafico", ylab = "Minutos")
+boxplot(actual_delivery_time_minutes ~ late_delivery, data = Comida_completados,
+        col = c("#c9daf8", "#f4cccc"),
+        main = "Tiempo real segun entrega tardia", xlab = "Entrega tardia", ylab = "Minutos")
+par(op)
+
+# Mediana del tiempo real por nivel de trafico.
+round(tapply(Comida_completados$actual_delivery_time_minutes,
+             Comida_completados$traffic_level, median, na.rm = TRUE), 1)
+```
+
+**Qué se ve.** El tiempo real de entrega tiende a subir con el nivel de trafico, y los pedidos
+marcados como tardios tienen tiempos claramente mayores. **Qué significa.** El contexto (trafico) se
+mueve junto con el tiempo de entrega, lo que sugiere relaciones que valdra la pena contrastar.
+**Decisión.** Estas diferencias entre grupos son la antesala natural de las **pruebas de hipotesis**:
+en la siguiente etapa se contrastara formalmente si el tiempo medio de entrega difiere entre niveles
+de trafico.
+
+# 6. Cierre y paso a las siguientes etapas
+
+Con este avance corregido el dataset queda preparado de forma rigurosa:
+
+- Cada variable tiene el tipo correcto (factores, factor ordenado, fechas y numericas).
+- Los pedidos cancelados estan separados y el analisis trabaja sobre `Comida_completados`
+  (`r nrow(Comida_completados)` pedidos), sin NA estructurales.
+- Los valores atipicos estan identificados y marcados (columna `n_atipicos`), conservando todos los
+  datos.
+- El analisis univariado y bivariado confirma las variables mas relevantes para el tiempo de
+  entrega y deja identificadas las relaciones entre grupos.
+
+El dataframe `Comida_completados` queda listo como insumo para:
+
+1. La **estandarizacion (z-score) y el PCA** del avance 2.
+2. Las **pruebas de hipotesis** sobre diferencias de grupos (por ejemplo, tiempo de entrega segun
+   trafico, clima o tipo de restaurante), que se desarrollaran a continuacion.
